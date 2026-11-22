@@ -313,6 +313,7 @@ class AnalyticalMind:
             LatentResidualPerspective(max_obs=max_obs),
             LocalWeightedPerspective(bandwidth=1.0, max_obs=max_obs),
             NearestNeighborPerspective(k=1, max_obs=max_obs),
+            TinyMLPPerspective(max_obs=max_obs),
         ]
         self.perspectives[5].name = "local_wide"
         self.blender_mode = "accuracy"
