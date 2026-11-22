@@ -35,7 +35,7 @@ Keyed store. On reinforcement, the stored y is updated as a running mean and a h
 A running Gaussian (mean and diagonal variance) over rejected inputs. Fixed size regardless of how many points are rejected. Not a learned predictor — it is a model of what noise looks like. Sampled only when no other store has a match.
 
 ### Trauma
-Fast store for high-error events on structured inputs. Seeds reactive (a shock becomes a reflex). Negatively weighted into wisdom.
+Fast store for high-error events on structured inputs. Negates reactive: pushes the stored reflex away from the bad output and drops its strength. Negatively weighted into wisdom. On a stream with periodic shocks this isolation is what keeps normal predictions accurate while linear, kNN, and MLP absorb the bad values.
 
 ## Randomness gate
 
