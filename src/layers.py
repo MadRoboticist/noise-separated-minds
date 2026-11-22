@@ -59,7 +59,7 @@ class KnowledgeLayer:
     def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
-            if np.linalg.norm(item.x - x) < 0.2 * np.sqrt(len(x)):
+            if np.linalg.norm(item.x - x) < 0.08 * np.sqrt(len(x)):
                 item.update(x, y)
                 item.strength = max(0.0, min(3.0, item.strength + boost))
                 item.last_seen = step
@@ -81,7 +81,7 @@ class KnowledgeLayer:
     def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         if tol is None:
-            tol = 0.2 * np.sqrt(len(x))
+            tol = 0.08 * np.sqrt(len(x))
         best = None
         best_d = tol
         for item in self.items:
@@ -140,7 +140,7 @@ class WisdomLayer:
         x = np.asarray(x, dtype=float).ravel()
         # Coarse match so one pattern is one entry
         for e in self.entries:
-            if np.linalg.norm(e.x - x) < 0.15 * np.sqrt(len(x)):
+            if np.linalg.norm(e.x - x) < 0.08 * np.sqrt(len(x)):
                 e.update(x, y)
                 e.confidence = max(e.confidence, confidence)
                 return
@@ -149,7 +149,7 @@ class WisdomLayer:
     def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         if tol is None:
-            tol = 0.15 * np.sqrt(len(x))
+            tol = 0.08 * np.sqrt(len(x))
         for e in self.entries:
             if e.x.shape == x.shape and np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
                 return e.y
