@@ -253,7 +253,10 @@ class NoiseSeparatedSystem:
                     self._err_window.pop(0)
             self._nudge_graph(x, y, pred)
             if pred is not None:
-                self.feedback.observe(x, float(y) - float(pred))
+                # Train feedback only on structured predictions
+                _, via = self.predict(x)
+                if "chaos" not in str(via):
+                    self.feedback.observe(x, float(y) - float(pred))
             self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
@@ -631,9 +634,9 @@ class NoiseSeparatedSystem:
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
         pred = self.graph.compute_output(votes)
-        if pred is not None and self.feedback._step > 30:
-            # Small fraction only; full correction was adding noise
-            pred = float(pred) + 0.15 * self.feedback.correct(x)
+        # Only correct when chaos did not vote; otherwise the residual is noise
+        if pred is not None and self.feedback._step > 30 and "chaos" not in votes:
+            pred = float(pred) + 0.3 * self.feedback.correct(x)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
