@@ -100,10 +100,13 @@ class NoiseSeparatedSystem:
 
     def _record(self, x: np.ndarray, event: Dict[str, Any]):
         key = self._trace_key(x)
-        full = {"step": self._step, "x": np.asarray(x, dtype=float).ravel().copy(), **event}
+        full = {"step": self._step, **event}  # x omitted; key is enough
         self._traces.setdefault(key, []).append(full)
-        if len(self._traces[key]) > 40:
-            self._traces[key] = self._traces[key][-40:]
+        if len(self._traces[key]) > 10:
+            self._traces[key] = self._traces[key][-10:]
+        if len(self._traces) > 30:
+            oldest = next(iter(self._traces))
+            self._traces.pop(oldest, None)
         self._log(**event, key=key)
 
     def get_trace(self, key: str) -> List[Dict[str, Any]]:
