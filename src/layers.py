@@ -59,7 +59,7 @@ class KnowledgeLayer:
     def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
-            if np.linalg.norm(item.x - x) < 1.0:
+            if np.linalg.norm(item.x - x) < 0.2 * np.sqrt(len(x)):
                 item.update(x, y)
                 item.strength = max(0.0, min(3.0, item.strength + boost))
                 item.last_seen = step
@@ -140,7 +140,7 @@ class WisdomLayer:
         x = np.asarray(x, dtype=float).ravel()
         # Coarse match so one pattern is one entry
         for e in self.entries:
-            if np.linalg.norm(e.x - x) < 0.5:
+            if np.linalg.norm(e.x - x) < 0.15 * np.sqrt(len(x)):
                 e.update(x, y)
                 e.confidence = max(e.confidence, confidence)
                 return
