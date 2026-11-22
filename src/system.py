@@ -719,11 +719,11 @@ class NoiseSeparatedSystem:
         if hasattr(self, "edge_weights"):
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
-        # Prefer the strongest single source over a diluted blend
-        if "thought" in votes and len(votes) > 1:
-            # Only blend if other votes are close to thought; else use thought
+        # Thought is the strongest single predictor on these streams.
+        # Blend only when every other vote is within 0.02 of thought.
+        if "thought" in votes:
             others = [v for k, v in votes.items() if k != "thought"]
-            if others and np.mean([abs(v - votes["thought"]) for v in others]) > 0.05:
+            if not others or np.mean([abs(v - votes["thought"]) for v in others]) > 0.02:
                 pred = votes["thought"]
                 via = "thought"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
