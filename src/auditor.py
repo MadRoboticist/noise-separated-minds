@@ -96,13 +96,13 @@ class Auditor:
                     else:
                         outside = abs(float(promoted) - float(observed_y)) > 1.5
                     if outside:
-                    finding = AuditFinding(
-                        key, kind,
-                        "Stored behavior contradicted later good observation",
-                        "sever_and_unlearn"
-                    )
-                    self.findings.append(finding)
-                    return finding
+                        finding = AuditFinding(
+                            key, kind,
+                            "Stored behavior contradicted later good observation",
+                            "sever_and_unlearn"
+                        )
+                        self.findings.append(finding)
+                        return finding
 
         return None
 
