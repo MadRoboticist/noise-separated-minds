@@ -155,7 +155,7 @@ class Auditor:
         # so the short path is taken less often. That is where error lives.
         # The store that was contradicted should be trusted less.
         if finding.disconnect_at == "promoted_wisdom" and hasattr(clerk, "wisdom_use_n"):
-            clerk.wisdom_use_n = min(220, clerk.wisdom_use_n + 5)
+            clerk.wisdom_use_n = min(190, clerk.wisdom_use_n + 2)
         elif finding.disconnect_at == "to_knowledge" and hasattr(clerk, "promote_hits"):
             clerk.promote_hits = min(20, clerk.promote_hits + 1)
         clerk.unlearn(finding.input_key)
