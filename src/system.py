@@ -81,7 +81,7 @@ class NoiseSeparatedSystem:
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
         self.fade_rate = 0.01
-        self.buffer_tol = 0.5  # auditor sets how close inputs must be to count as a repeat
+        self.bypass_dist = 0.15  # auditor sets how close inputs must be to skip the gate
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -284,7 +284,7 @@ class NoiseSeparatedSystem:
         if len(self._recent_raw) >= 12:
             base = self._recent_raw[-1]
             dists = [np.linalg.norm(r - base) for r in self._recent_raw[-12:]]
-            self.gate_bypass = float(np.median(dists)) < 0.15
+            self.gate_bypass = float(np.median(dists)) < self.bypass_dist
         self._recent_scores.append(score)
         if len(self._recent_scores) > 40:
             self._recent_scores.pop(0)
@@ -380,7 +380,7 @@ class NoiseSeparatedSystem:
         if self._step % 5 == 0:
             self._propose_hypothesis(x)
 
-        existing = self.short_term.find_similar(x, tol=self.buffer_tol)
+        existing = self.short_term.find_similar(x)
         item = self.knowledge.find_item(x)
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
         hyp_score = self.hypotheses.confirmation_score(x)
