@@ -10,12 +10,13 @@ import numpy as np
 
 
 class AuditFinding:
-    def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str, distance: float = None):
+    def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str, distance: float = None, via: str = None):
         self.input_key = input_key
         self.disconnect_at = disconnect_at
         self.detail = detail
         self.action = action
         self.distance = distance
+        self.via = via
 
 
 class Auditor:
@@ -117,7 +118,8 @@ class Auditor:
                         key, "prediction",
                         f"Irrational prediction {pred} on structured input",
                         "sever_and_unlearn",
-                        distance=self._nearest_distance(clerk, x)
+                        distance=self._nearest_distance(clerk, x),
+                        via=event.get("via")
                     )
                     self.findings.append(finding)
                     return finding
@@ -152,12 +154,7 @@ class Auditor:
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
         if finding.disconnect_at == "prediction" and hasattr(clerk, "reactive_conf_bar"):
-            via = ""
-            trace = clerk._traces.get(finding.input_key, [])
-            for e in reversed(trace):
-                if e.get("kind") == "predict":
-                    via = str(e.get("via", ""))
-                    break
+            via = str(finding.via or "")
             if "reactive" in via:
                 clerk.reactive_conf_bar = min(0.999, clerk.reactive_conf_bar + 0.005)
             else:
