@@ -1,4 +1,4 @@
-"""File clerk. Audit trail records before/after; chaos similarity is recency-weighted."""
+"""File clerk. Reactive is muscle memory; Wisdom is later consistency after deliberation."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -59,6 +59,8 @@ class NoiseSeparatedSystem:
         self._wisdom_rel: List[tuple] = []
         self._unlearn_details: List[Dict[str, Any]] = []
         self._unlearn_counts: Dict[str, int] = defaultdict(int)
+        # Track early disagreement so we know what required deliberation
+        self._early_disagreement: Dict[str, int] = defaultdict(int)
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -216,6 +218,15 @@ class NoiseSeparatedSystem:
             self.hypotheses.propose(x, y_hat, self._step)
             self._log("hypothesis_proposed", y=y_hat)
 
+    def _is_trauma(self, x, y, existing) -> bool:
+        """Large sudden error on a structured input can lock muscle memory."""
+        if y is None or existing is None:
+            return False
+        pred = self.thought.sample(x)
+        if pred is None:
+            return False
+        return abs(float(pred) - float(y)) > self.demote_error_tol * 2.5
+
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
@@ -252,6 +263,10 @@ class NoiseSeparatedSystem:
 
         agreement = self.thought.mind.agreement(x) if len(self.thought) > 2 else 0.5
         self._adapt_exploration(agreement)
+
+        # Record early disagreement for later wisdom eligibility
+        if agreement < 0.55:
+            self._early_disagreement[self._trace_key(x)] += 1
 
         if y is not None and len(self.thought) > 3:
             unc = self.calibrated_uncertainty(self.thought.uncertainty(x))
@@ -296,7 +311,18 @@ class NoiseSeparatedSystem:
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
         hyp_score = self.hypotheses.confirmation_score(x)
         hits_needed = max(2, self.promote_hits - (1 if hyp_score > 0.5 else 0))
+        key = self._trace_key(x)
 
+        # --- Muscle memory (Reactive): pure repetition OR trauma ---
+        if existing is not None and y is not None:
+            high_repetition = existing["hits"] >= hits_needed * 2 and score >= self.promote_score
+            trauma = self._is_trauma(x, y, existing)
+            if high_repetition or trauma:
+                self.reactive.store(x, y)
+                self._record(x, {"kind": "muscle_memory", "via": "trauma" if trauma else "repetition", **context})
+                # Do not automatically promote to Wisdom
+
+        # --- Knowledge (still the medium-term store) ---
         if (
             existing is not None
             and existing["hits"] >= hits_needed
@@ -308,11 +334,18 @@ class NoiseSeparatedSystem:
             boost = self.knowledge_boost + 0.2 * hyp_score
             self.knowledge.add_or_reinforce(x, stored_y, boost=boost, step=self._step)
             self._record(x, {"kind": "promoted_knowledge", "y": stored_y, **context})
-            if age_ok:
+
+            # --- Wisdom: only if it required earlier deliberation and is now consistent ---
+            had_deliberation = (
+                self._early_disagreement[key] >= 1
+                or hyp_score > 0.3
+                or (item is not None and item.strength < self.wisdom_strength * 0.8)
+            )
+            now_consistent = agreement >= self.min_agreement and age_ok
+            if had_deliberation and now_consistent:
                 item = self.knowledge.find_item(x)
-                if item and item.strength >= self.wisdom_strength:
+                if item and item.strength >= self.wisdom_strength * 0.7:
                     self.wisdom.add(x, stored_y, confidence=item.strength, step=self._step)
-                    self.reactive.store(x, stored_y)
                     self._record(x, {"kind": "promoted_wisdom", "y": stored_y, **context})
                     return "promoted_wisdom"
             return "promoted_knowledge"
@@ -335,7 +368,6 @@ class NoiseSeparatedSystem:
         return "thought"
 
     def _similarity_to_good(self, x: np.ndarray) -> float:
-        """Recency-weighted similarity (newer good inputs count more)."""
         if not self._recent_good:
             return 0.0
         x = np.asarray(x).ravel()
@@ -344,7 +376,7 @@ class NoiseSeparatedSystem:
         weighted = 0.0
         wsum = 0.0
         for i, g in enumerate(goods):
-            recency = (i + 1) / n  # newer = higher
+            recency = (i + 1) / n
             dist = np.linalg.norm(g.ravel() - x)
             sim = 1.0 / (1.0 + dist)
             weighted += recency * sim
@@ -394,14 +426,15 @@ class NoiseSeparatedSystem:
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
-        w = self.wisdom.lookup(x)
-        if w is not None:
-            self._record(x, {"kind": "predict", "pred": w, "via": "wisdom"})
-            return w, "wisdom"
+        # Muscle memory is fastest when it exists
         r = self.reactive.lookup(x)
         if r is not None:
             self._record(x, {"kind": "predict", "pred": r, "via": "reactive"})
             return r, "reactive"
+        w = self.wisdom.lookup(x)
+        if w is not None:
+            self._record(x, {"kind": "predict", "pred": w, "via": "wisdom"})
+            return w, "wisdom"
         k = self.knowledge.lookup(x)
         if k is not None:
             self._record(x, {"kind": "predict", "pred": k, "via": "knowledge"})
