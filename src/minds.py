@@ -1,4 +1,4 @@
-"""Thought ensemble + active ChaosPile."""
+"""Thought ensemble. Generative perspectives can influence blender weights."""
 
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -33,6 +33,7 @@ class Perspective:
         self.xs: List[np.ndarray] = []
         self.ys: List[Any] = []
         self.recent_errors: List[float] = []
+        self.generative_bonus = 1.0  # can be raised by confirmed hypotheses
 
     def observe(self, x: np.ndarray, y: Any):
         self.xs.append(np.asarray(x, dtype=float).ravel())
@@ -70,6 +71,7 @@ class Perspective:
         self.ys.clear()
         self.recent_errors.clear()
         self.auto_disabled = False
+        self.generative_bonus = 1.0
 
 
 class LocalWeightedPerspective(Perspective):
@@ -326,8 +328,10 @@ class AnalyticalMind:
         for p in active:
             pr = p.predict(x)
             if pr is not None:
+                # Generative bonus multiplies the weight
+                w = p.accuracy_weight() * p.generative_bonus / max(p.uncertainty(x), 0.05)
                 preds.append(pr)
-                weights.append(p.accuracy_weight() / max(p.uncertainty(x), 0.05))
+                weights.append(w)
         if not preds:
             return None
         preds = np.array(preds)
@@ -344,6 +348,16 @@ class AnalyticalMind:
             if isinstance(p, (GaussianMixturePerspective, LatentResidualPerspective)):
                 return p.sample(x)
         return self.sample(x)
+
+    def boost_generative(self, amount: float = 0.15):
+        """Raise blender weight of generative perspectives after confirmed hypotheses."""
+        for p in self.perspectives:
+            if isinstance(p, (GaussianMixturePerspective, LatentResidualPerspective)):
+                p.generative_bonus = min(2.5, p.generative_bonus + amount)
+
+    def decay_generative_bonus(self):
+        for p in self.perspectives:
+            p.generative_bonus = max(1.0, p.generative_bonus * 0.995)
 
     def uncertainty(self, x: np.ndarray) -> float:
         active = self._active()
@@ -368,8 +382,6 @@ class AnalyticalMind:
 
 
 class ChaosPile:
-    """Rejected noise plus active probing."""
-
     def __init__(self, max_rejected: int = 5_000):
         self.rejected: List[np.ndarray] = []
         self.max_rejected = max_rejected
@@ -385,7 +397,6 @@ class ChaosPile:
         return np.random.randn(*shape)
 
     def probe(self, n: int = 5) -> List[np.ndarray]:
-        """Actively sample candidates from the pile for re-testing."""
         if not self.rejected:
             return []
         self.probe_attempts += 1
