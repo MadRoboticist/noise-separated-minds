@@ -4,12 +4,16 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Procedural and file-clerk-only. Its job is to **disconnect irrational behavior from good inputs**.
-- Only examines inputs the gate already scored as structured.
-- Walks the trace of that input backward.
-- Detects irrational acts: good input sent to chaos, wildly wrong prediction, promotion later contradicted.
-- Severs the bad behavior (demote reactive, weaken knowledge/wisdom) and forces the good input back into Thought for clean re-filing.
-- Never touches the minds directly.
+Procedural, file-clerk-only. Disconnects irrational behavior from good inputs.
+Traces now include gate score, agreement, and active perspectives at the moment of each decision.
+
+## Unified event log
+
+`system.event_log` is a single chronological record of routings, promotions, demotions, hypothesis proposals, chaos-probe successes, and auditor severances.
+
+## Chaos probing
+
+Prefers rejects whose structure score is closest to the current threshold (instead of pure random).
 
 ## Generative integration
 
@@ -18,10 +22,6 @@ Hypotheses from generative samples; confirmation influences promotion.
 ## Consolidation
 
 Time-gap before Wisdom, re-validation, confidence checks.
-
-## Chaos
-
-Active probing + promotion budget.
 
 ## Run
 
