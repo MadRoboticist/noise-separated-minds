@@ -1,66 +1,86 @@
+"""Adaptive parameter search over the full configuration suite.
 
-"""Adaptive parameter search.
-
-Tries combinations of gate, auditor, and ensemble settings on a
-short rolling window and keeps the configuration that produces
-the lowest recent error.
+Samples combinations of gate, auditor, knowledge, wisdom, and
+ensemble-related parameters and keeps the set that produces the
+lowest recent error.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import itertools
 import numpy as np
 from .config import SystemConfig
 from .system import NoiseSeparatedSystem
 
 
+# Full suite: every knob that affects routing, permanence, or audit
+PARAM_SPACE = {
+    # gate / noise
+    "noise_threshold": [0.0, 0.25, 0.35, 0.50, 0.65],
+    # promotion into knowledge / wisdom
+    "promote_hits": [2, 3, 4, 6],
+    "promote_score": [0.10, 0.20, 0.30, 0.42, 0.55],
+    "min_agreement": [0.3, 0.5, 0.6, 0.75],
+    "min_age": [2, 4, 8, 16],
+    "knowledge_boost": [0.1, 0.3, 0.4, 0.7, 1.0],
+    "wisdom_strength": [0.5, 1.0, 1.5, 2.5],
+    # exploration / chaos
+    "explore_prob": [0.0, 0.02, 0.05, 0.10],
+    "chaos_promote_budget": [0.05, 0.15, 0.30],
+    # demotion / audit
+    "demote_error_tol": [0.2, 0.35, 0.5, 0.8],
+    "audit_every": [10**9, 15, 30, 60],
+    "revalidate_interval": [20, 40, 80],
+}
+
+
 class AdaptiveTuner:
-    def __init__(self, window: int = 120):
-        self.window = window
+    def __init__(self, n_samples: int = 40, seed: int = 0):
+        self.n_samples = n_samples
+        self.rng = np.random.RandomState(seed)
         self.best_cfg: Dict[str, Any] = {}
         self.best_error = float("inf")
         self.history: List[Dict[str, Any]] = []
 
-    def candidate_grid(self) -> List[Dict[str, Any]]:
-        """Small grid of broad-stroke parameters."""
-        grid = {
-            "noise_threshold": [0.0, 0.35, 0.50],
-            "audit_every": [10**9, 20, 50],
-            "promote_hits": [2, 3],
-            "promote_score": [0.15, 0.30],
-        }
-        keys = list(grid.keys())
-        combos = []
-        for vals in itertools.product(*[grid[k] for k in keys]):
-            combos.append(dict(zip(keys, vals)))
-        return combos
+    def sample_config(self) -> Dict[str, Any]:
+        """Draw one random configuration from the full suite."""
+        cfg = {}
+        for k, choices in PARAM_SPACE.items():
+            cfg[k] = choices[self.rng.randint(0, len(choices))]
+        return cfg
 
-    def evaluate(self, X: np.ndarray, y: np.ndarray, cfg_overrides: Dict[str, Any]) -> float:
+    def evaluate(self, X: np.ndarray, y: np.ndarray, overrides: Dict[str, Any]) -> float:
         cfg = SystemConfig.small()
-        for k, v in cfg_overrides.items():
+        for k, v in overrides.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
         s = NoiseSeparatedSystem(config=cfg)
-        if cfg_overrides.get("audit_every", 20) > 1000:
+        if overrides.get("audit_every", 20) > 1000:
             s.audit_every = 10**9
         errors = []
         for i in range(len(X)):
-            if i > 20:
+            if i > 15:
                 pred, _ = s.predict(X[i])
                 if pred is not None:
-                    errors.append(abs(float(np.asarray(pred).ravel()[0]) - y[i]))
+                    errors.append(abs(float(np.asarray(pred).ravel()[0]) - float(y[i])))
             s.observe(X[i], y[i])
         return float(np.mean(errors)) if errors else float("inf")
 
-    def search(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
-        """Run the grid on the given window and return the best overrides."""
+    def search(self, X: np.ndarray, y: np.ndarray, n_samples: Optional[int] = None) -> Dict[str, Any]:
+        """Random search over the full suite. Returns best overrides."""
+        n = n_samples or self.n_samples
         best = {}
         best_err = float("inf")
-        for combo in self.candidate_grid():
+        for i in range(n):
+            combo = self.sample_config()
             err = self.evaluate(X, y, combo)
             self.history.append({"cfg": combo, "error": err})
             if err < best_err:
                 best_err = err
                 best = combo
+                print(f"  [{i+1}/{n}] new best {err:.4f}  thr={combo['noise_threshold']} audit={combo['audit_every']} hits={combo['promote_hits']}")
         self.best_cfg = best
         self.best_error = best_err
         return best
+
+    def top(self, k: int = 5) -> List[Dict[str, Any]]:
+        return sorted(self.history, key=lambda h: h["error"])[:k]
