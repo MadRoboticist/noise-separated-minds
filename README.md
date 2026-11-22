@@ -2,10 +2,20 @@
 
 Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
+## Non-numeric contexts
+
+`observe_context` / `predict_context` accept strings, categories, mixed lists, or numbers. A hashing encoder turns them into fixed vectors before the gate and minds.
+
+```python
+s.observe_context("the sky is blue", y=1.0)
+s.observe_context(["cat", 3, "warm"], y=0.5)
+pred, via = s.predict_context("the sky is blue")
+```
+
 ## Reactive vs Wisdom
 
-- **Reactive** = muscle memory. Acquired by straight mechanical repetition or by trauma (a large sudden error on a structured input). Fast lookup. Does not automatically become Wisdom.
-- **Wisdom** = later consistency after earlier deliberation. An item becomes eligible only if it previously showed disagreement, required hypotheses, or spent time in Knowledge, and is now consistent. Not the same path as Reactive.
+- **Reactive** = muscle memory (repetition or trauma).
+- **Wisdom** = later consistency after earlier deliberation.
 
 ## Configuration
 
@@ -15,28 +25,10 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 Surgical unlearn with before	o after values and recurrence count.
 
-## Generative blender
-
-Confirmed hypotheses raise a bonus on GMM / latent-residual weights.
-
-## Calibration
-
-Thought temperature scaling + Wisdom confidence reliability.
-
-## Chaos probing
-
-Threshold proximity + recency-weighted similarity to good inputs.
-
 ## Comparative evaluation
 
 ```bash
 python benchmarks/comparative.py
-```
-
-## Persistence
-
-```bash
-python tests/test_persistence.py
 ```
 
 ## Run
