@@ -57,8 +57,6 @@ The discrete patterns with periodic shocks: a known pattern paired with a wildly
 
 The system is well ahead. kNN is the worst — it stores the shock samples and returns them as neighbors. Linear and MLP absorb the bad outputs into their weights. The system's trauma path isolates the shock: it negates reactive (pushes the reflex away from the bad value) and does not let the bad output become the stored pattern.
 
-On a controlled comparison with reactive already confident, negating trauma cut error from 0.0077 (trauma added to reactive) to 0.0019 (trauma negated).
-
 ## Decision mix
 
 On a 2000-step discrete stream at dim=64:
