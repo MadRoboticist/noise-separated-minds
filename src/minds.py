@@ -10,7 +10,8 @@ class ReactiveMind:
         self.max_entries = max_entries
 
     def _key(self, x: np.ndarray) -> bytes:
-        return np.asarray(x).tobytes()
+        v = np.round(np.asarray(x, dtype=float).ravel(), 1)
+        return v.tobytes()
 
     def store(self, x: np.ndarray, y: Any):
         if len(self.table) >= self.max_entries:
