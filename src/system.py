@@ -77,6 +77,7 @@ class NoiseSeparatedSystem:
         self.tol_scale = 1.0
         self.reactive_conf_bar = 0.98
         self.wisdom_use_n = 180
+        self.trauma_negate_strength = 0.5
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -698,7 +699,7 @@ class NoiseSeparatedSystem:
             if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.08 * np.sqrt(len(x)):
                 old_y = val[0] if isinstance(val, tuple) else val
                 hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
-                new_y = old_y - 0.5 * (float(y) - old_y) / max(hits, 1)
+                new_y = old_y - self.trauma_negate_strength * (float(y) - old_y) / max(hits, 1)
                 stren = val[1] if isinstance(val, tuple) else 1.0
                 self.reactive.table[k] = (new_y, max(stren - 0.5, 0.1), hits)
                 return
