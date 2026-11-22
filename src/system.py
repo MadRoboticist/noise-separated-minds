@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, ChaosPile
+from .minds import ReactiveMind, TraumaStore, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
@@ -25,6 +25,8 @@ class NoiseSeparatedSystem:
         self.noise_profile = NoiseProfile()
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
+        self.trauma = TraumaStore()
+        self.graph_mode = 'blend'  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -364,9 +366,14 @@ class NoiseSeparatedSystem:
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
-            if high_repetition or trauma:
+            if trauma and y is not None:
+                # Trauma is fast and separate; it is the primary audit target
+                err = abs(float(y) - float(existing.get("output", y))) if existing.get("output") is not None else 1.0
+                self.trauma.store(x, y, error=err, step=self._step)
+                self._record(x, {"kind": "trauma", "y": y, "error": err, **context})
+            if high_repetition:
                 self.reactive.store(x, y)
-                self._record(x, {"kind": "muscle_memory", "via": "trauma" if trauma else "repetition", **context})
+                self._record(x, {"kind": "muscle_memory", "via": "repetition", **context})
                 # Do not early-return; let knowledge and wisdom still be considered
 
         # --- Knowledge (still the medium-term store) ---
@@ -474,25 +481,57 @@ class NoiseSeparatedSystem:
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
-        # Muscle memory is fastest when it exists
+        mode = getattr(self, "graph_mode", "blend")
+
+        # Collect available votes
+        votes = {}
         r = self.reactive.lookup(x)
         if r is not None:
-            self._record(x, {"kind": "predict", "pred": r, "via": "reactive"})
-            return r, "reactive"
+            votes["reactive"] = float(r)
+        t = self.trauma.lookup(x)
+        if t is not None:
+            votes["trauma"] = float(t)
         w = self.wisdom.lookup(x)
         if w is not None:
-            self._record(x, {"kind": "predict", "pred": w, "via": "wisdom"})
-            return w, "wisdom"
+            votes["wisdom"] = float(w)
         k = self.knowledge.lookup(x)
         if k is not None:
-            self._record(x, {"kind": "predict", "pred": k, "via": "knowledge"})
-            return k, "knowledge"
-        # On short vectors the gate's structure tests are unreliable; do not refuse to predict
-        if len(np.asarray(x).ravel()) >= 16 and self.gate.score(x) < self.gate.threshold:
-            return self.chaos.sample(getattr(x, "shape", (1,))), "chaos"
-        pred = self.thought.sample(x)
-        self._record(x, {"kind": "predict", "pred": pred, "via": "thought"})
-        return pred, "thought"
+            votes["knowledge"] = float(k)
+        thought_pred = self.thought.sample(x)
+        if thought_pred is not None:
+            votes["thought"] = float(thought_pred)
+
+        if mode == "cascade":
+            for name in ("reactive", "wisdom", "knowledge", "thought"):
+                if name in votes:
+                    self._record(x, {"kind": "predict", "pred": votes[name], "via": name})
+                    return votes[name], name
+            return None, "none"
+
+        if mode == "thought_consults":
+            # Thought is primary but shifts toward agreeing layers
+            base = votes.get("thought")
+            if base is None:
+                base = next(iter(votes.values()), None)
+            if base is None:
+                return None, "none"
+            others = [v for n, v in votes.items() if n != "thought"]
+            if others:
+                base = 0.6 * base + 0.4 * float(np.mean(others))
+            self._record(x, {"kind": "predict", "pred": base, "via": "thought_consults"})
+            return base, "thought_consults"
+
+        # Default: blend all available votes
+        if not votes:
+            return None, "none"
+        # Weight: wisdom and knowledge higher, trauma lower (it is provisional)
+        weights = {"wisdom": 1.5, "knowledge": 1.2, "reactive": 1.0, "thought": 1.0, "trauma": 0.4}
+        num = sum(votes[n] * weights.get(n, 1.0) for n in votes)
+        den = sum(weights.get(n, 1.0) for n in votes)
+        pred = num / den
+        via = "blend:" + "+".join(sorted(votes.keys()))
+        self._record(x, {"kind": "predict", "pred": pred, "via": via})
+        return pred, via
 
     def stats(self) -> dict:
         recurrent = sum(1 for c in self._unlearn_counts.values() if c > 1)

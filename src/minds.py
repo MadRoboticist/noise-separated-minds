@@ -465,3 +465,32 @@ class ChaosPile:
 
     def __len__(self):
         return len(self.rejected)
+
+
+class TraumaStore:
+    """Fast-forming responses from high-error or shocking events.
+    These are the primary targets for the auditor.
+    """
+    def __init__(self):
+        self.table = {}  # key -> (x, y, error, step)
+
+    def store(self, x, y, error: float, step: int):
+        key = self._key(x)
+        self.table[key] = (np.asarray(x, dtype=float).ravel().copy(), y, float(error), step)
+
+    def lookup(self, x, tol: float = 0.5):
+        x = np.asarray(x, dtype=float).ravel()
+        best, best_d = None, tol
+        for k, (xi, y, err, step) in self.table.items():
+            if xi.shape != x.shape:
+                continue
+            d = np.linalg.norm(xi - x)
+            if d < best_d:
+                best_d, best = d, y
+        return best
+
+    def _key(self, x):
+        return np.asarray(x, dtype=float).ravel().tobytes()
+
+    def __len__(self):
+        return len(self.table)

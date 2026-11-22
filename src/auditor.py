@@ -85,14 +85,14 @@ class Auditor:
                     self.findings.append(finding)
                     return finding
 
-            if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
+            if kind in ("trauma", "promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
                 if promoted is not None:
                     recent_ys = [float(e.get("y")) for e in recent if e.get("y") is not None]
                     if len(recent_ys) >= 3:
                         rmin, rmax = min(recent_ys), max(recent_ys)
                         # only flag if the new y is well outside the recent range
-                        outside = float(observed_y) < rmin - 1.0 or float(observed_y) > rmax + 1.0
+                        outside = (kind == 'trauma') or (float(observed_y) < rmin - 1.0 or float(observed_y) > rmax + 1.0)
                     else:
                         outside = abs(float(promoted) - float(observed_y)) > 1.5
                     if outside:
