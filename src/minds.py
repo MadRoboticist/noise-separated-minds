@@ -446,7 +446,7 @@ class AnalyticalMind:
             for i, p in enumerate(active):
                 if p.predict(x) is None:
                     continue
-                e = p.recent_error() if hasattr(p, "recent_error") else float("inf")
+                e = float(np.mean(p.recent_errors)) if getattr(p, "recent_errors", None) else float("inf")
                 if e < best_err:
                     best_err, best_i = e, i
             return float(preds[min(best_i, len(preds)-1)])

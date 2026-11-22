@@ -464,6 +464,12 @@ class NoiseSeparatedSystem:
             self.trauma.fade()
             self.graph.decay_toward_prior(rate=0.005)
             self.short_term.decay()
+            if len(self._recent_raw) > 20:
+                self._recent_raw = self._recent_raw[-20:]
+            if len(self._recent_good) > 20:
+                self._recent_good = self._recent_good[-20:]
+            if len(self.event_log) > 50:
+                self.event_log = self.event_log[-50:]
             if self._active_chaos_probe():
                 self._reentries += 1
                 self._chaos_promotions += 1
