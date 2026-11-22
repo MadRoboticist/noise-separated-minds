@@ -390,7 +390,8 @@ class NoiseSeparatedSystem:
                 # and is the primary audit target.
                 err = abs(float(y) - float(existing.get("output", y))) if existing.get("output") is not None else 1.0
                 self.trauma.store(x, y, error=err, step=self._step)
-                self.reactive.store(x, y, strength=2.0)  # trauma contributes to reaction
+                # Trauma negates reactive: push the reflex away from the bad output
+                self._negate_reactive(x, y)
                 self._record(x, {"kind": "trauma", "y": y, "error": err, **context})
             if high_repetition:
                 self.reactive.store(x, y)
@@ -675,6 +676,23 @@ class NoiseSeparatedSystem:
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
+
+
+    def _negate_reactive(self, x, y):
+        """Push reactive away from a trauma value."""
+        x = np.asarray(x, dtype=float).ravel()
+        for k, val in list(self.reactive.table.items()):
+            try:
+                xi = np.frombuffer(k, dtype=float)
+            except Exception:
+                continue
+            if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.08 * np.sqrt(len(x)):
+                old_y = val[0] if isinstance(val, tuple) else val
+                hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
+                new_y = old_y - 0.5 * (float(y) - old_y) / max(hits, 1)
+                stren = val[1] if isinstance(val, tuple) else 1.0
+                self.reactive.table[k] = (new_y, max(stren - 0.5, 0.1), hits)
+                return
 
     def stats(self) -> dict:
         recurrent = sum(1 for c in self._unlearn_counts.values() if c > 1)
