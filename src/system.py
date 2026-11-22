@@ -74,6 +74,7 @@ class NoiseSeparatedSystem:
         self._recent_scores: List[float] = []
         self._recent_raw: List[np.ndarray] = []
         self.gate_bypass = False
+        self.tol_scale = 1.0
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -264,6 +265,9 @@ class NoiseSeparatedSystem:
             finding = self.auditor.audit_input(self, suspect, observed_y=y)
             if finding:
                 self.auditor.apply(self, finding)
+                self.knowledge.tol_scale = self.tol_scale
+                self.wisdom.tol_scale = self.tol_scale
+                self.reactive.tol_scale = self.tol_scale
                 self._log("audit_unlearn", disconnect=finding.disconnect_at)
         score = self.gate.score(x)
         self._recent_raw.append(np.asarray(x).ravel().copy())
@@ -296,6 +300,9 @@ class NoiseSeparatedSystem:
                     finding = self.auditor.audit_input(self, x, observed_y=y)
                     if finding:
                         self.auditor.apply(self, finding)
+                        self.knowledge.tol_scale = self.tol_scale
+                        self.wisdom.tol_scale = self.tol_scale
+                        self.reactive.tol_scale = self.tol_scale
                         self._log("hypothesis_triggered_audit")
 
         if y is not None:

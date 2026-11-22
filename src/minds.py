@@ -20,7 +20,7 @@ class ReactiveMind:
         for k in list(self.table.keys()):
             try:
                 xi = np.frombuffer(k, dtype=float)
-                tol = 0.08 * np.sqrt(len(x))
+                tol = 0.08 * np.sqrt(len(x)) * getattr(self, 'tol_scale', 1.0)
                 if xi.shape == x.shape and np.linalg.norm(xi - x) < tol:
                     prev = self.table[k]
                     # Accumulate a running mean of y, do not store the sample
@@ -39,7 +39,7 @@ class ReactiveMind:
     def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         if tol is None:
-            tol = 0.08 * np.sqrt(len(x))
+            tol = 0.08 * np.sqrt(len(x)) * getattr(self, 'tol_scale', 1.0)
         exact = self.table.get(self._key(x))
         if exact is not None:
             return exact[0] if isinstance(exact, tuple) else exact
@@ -98,7 +98,7 @@ class ReactiveMind:
                 continue
             if xi.shape != x.shape:
                 continue
-            if np.linalg.norm(xi - x) < 0.08 * np.sqrt(len(x)):
+            if np.linalg.norm(xi - x) < 0.08 * np.sqrt(len(x)) * getattr(self, 'tol_scale', 1.0):
                 strength = val[1] if isinstance(val, tuple) else 1.0
                 hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
                 best = max(best, min(1.0, strength / 5.0) * min(1.0, hits / 200.0))

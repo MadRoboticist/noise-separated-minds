@@ -121,6 +121,12 @@ class Auditor:
             return
         # Only sever if we have a concrete better observation
         # (the finding already encodes the contradiction)
+        dist = getattr(finding, "distance", None)
+        if dist is not None and hasattr(clerk, "tol_scale"):
+            if dist > 0.5:
+                clerk.tol_scale = max(0.5, clerk.tol_scale * 0.95)
+            elif dist < 0.15:
+                clerk.tol_scale = min(1.5, clerk.tol_scale * 1.02)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
