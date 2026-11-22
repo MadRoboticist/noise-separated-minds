@@ -1,4 +1,4 @@
-"""File clerk. Chaos probing prefers threshold proximity + similarity to good inputs."""
+"""File clerk. Generative bonus on confirmed hypotheses + unlearn recurrence counter."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -58,6 +58,7 @@ class NoiseSeparatedSystem:
         self.temperature = 1.0
         self._wisdom_rel: List[tuple] = []
         self._unlearn_details: List[Dict[str, Any]] = []
+        self._unlearn_counts: Dict[str, int] = defaultdict(int)  # recurrence
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -81,6 +82,7 @@ class NoiseSeparatedSystem:
         return self._traces.get(key, [])
 
     def unlearn(self, key: str):
+        self._unlearn_counts[key] += 1
         dropped_reactive = []
         to_drop = [k for k in list(self.reactive.table.keys()) if key[:12] in str(k)]
         for k in to_drop[:5]:
@@ -114,6 +116,7 @@ class NoiseSeparatedSystem:
         detail = {
             "step": self._step,
             "key": key,
+            "times": self._unlearn_counts[key],
             "dropped_reactive": dropped_reactive,
             "weakened_knowledge": weakened_k,
             "weakened_wisdom": weakened_w,
@@ -176,7 +179,7 @@ class NoiseSeparatedSystem:
             f.write("\n## Surgical unlearns\n")
             for d in self._unlearn_details[-30:]:
                 f.write(
-                    f"step {d['step']} key={d['key']} "
+                    f"step {d['step']} key={d['key']} times={d.get('times', 1)} "
                     f"reactive_dropped={len(d['dropped_reactive'])} "
                     f"knowledge_weakened={d['weakened_knowledge']} "
                     f"wisdom_weakened={d['weakened_wisdom']} "
@@ -220,6 +223,14 @@ class NoiseSeparatedSystem:
 
         active_names = self.thought.mind.active_names
         self.hypotheses.observe(x, y, self._step)
+
+        # Boost generative blender weight when a hypothesis is confirmed
+        if y is not None:
+            for h in self.hypotheses.hypotheses:
+                if h.active and h.confirmations >= 1 and self._trace_key(h.x) == self._trace_key(x):
+                    self.thought.mind.boost_generative(0.1)
+                    break
+            self.thought.mind.decay_generative_bonus()
 
         if y is not None:
             for h in self.hypotheses.hypotheses:
@@ -323,7 +334,6 @@ class NoiseSeparatedSystem:
         return "thought"
 
     def _similarity_to_good(self, x: np.ndarray) -> float:
-        """Higher is better (closer to known good inputs)."""
         if not self._recent_good:
             return 0.0
         x = np.asarray(x).ravel()
@@ -331,7 +341,6 @@ class NoiseSeparatedSystem:
         return float(1.0 / (1.0 + min(dists)))
 
     def _active_chaos_probe(self) -> bool:
-        """Prefer rejects near threshold that also resemble known good inputs."""
         if not self.chaos.rejected:
             return False
         scored = []
@@ -339,7 +348,6 @@ class NoiseSeparatedSystem:
             s = self.gate.score(cx)
             thr_dist = abs(s - self.gate.threshold)
             sim = self._similarity_to_good(cx)
-            # Lower score is better: threshold distance minus similarity bonus
             priority = thr_dist - 0.4 * sim
             scored.append((priority, cx, s, sim))
         scored.sort(key=lambda t: t[0])
@@ -394,6 +402,7 @@ class NoiseSeparatedSystem:
         return pred, "thought"
 
     def stats(self) -> dict:
+        recurrent = sum(1 for c in self._unlearn_counts.values() if c > 1)
         return {
             "thought": len(self.thought),
             "knowledge": len(self.knowledge),
@@ -404,6 +413,7 @@ class NoiseSeparatedSystem:
             "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
             "unlearns": len(self._unlearn_details),
+            "recurrent_unlearns": recurrent,
             "event_log_len": len(self.event_log),
             "calibration": self.calibration_summary(),
             "wisdom_reliability": self.wisdom_reliability(),
