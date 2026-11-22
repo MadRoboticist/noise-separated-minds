@@ -315,7 +315,7 @@ class NoiseSeparatedSystem:
 
         # --- Muscle memory (Reactive): pure repetition OR trauma ---
         if existing is not None and y is not None:
-            high_repetition = existing["hits"] >= hits_needed * 2 and score >= self.promote_score
+            high_repetition = existing["hits"] >= hits_needed + 1 and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
             if high_repetition or trauma:
                 self.reactive.store(x, y)
@@ -336,11 +336,7 @@ class NoiseSeparatedSystem:
             self._record(x, {"kind": "promoted_knowledge", "y": stored_y, **context})
 
             # --- Wisdom: only if it required earlier deliberation and is now consistent ---
-            had_deliberation = (
-                self._early_disagreement[key] >= 1
-                or hyp_score > 0.3
-                or (item is not None and item.strength < self.wisdom_strength * 0.8)
-            )
+            had_deliberation = self._early_disagreement[key] >= 2 or hyp_score > 0.6
             now_consistent = agreement >= self.min_agreement and age_ok
             if had_deliberation and now_consistent:
                 item = self.knowledge.find_item(x)
