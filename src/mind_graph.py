@@ -48,12 +48,26 @@ class MindGraph:
         self.edges = dict(DEFAULT_EDGES)
         if edges:
             self.edges.update(edges)
+        self.normalize()
 
     def weight(self, src: str, dst: str) -> float:
         return float(self.edges.get((src, dst), 0.0))
 
     def set_weight(self, src: str, dst: str, w: float):
         self.edges[(src, dst)] = float(w)
+
+    def normalize(self):
+        """Make weights into each destination sum to 1."""
+        from collections import defaultdict
+        by_dst = defaultdict(list)
+        for (src, dst), w in self.edges.items():
+            by_dst[dst].append((src, w))
+        for dst, pairs in by_dst.items():
+            total = sum(max(0.0, w) for _, w in pairs)
+            if total <= 0:
+                continue
+            for src, w in pairs:
+                self.edges[(src, dst)] = max(0.0, w) / total
 
     def compute_output(self, signals: Dict[str, Optional[float]]) -> Optional[float]:
         """Blend all nodes that feed output, using edge weights.
