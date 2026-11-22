@@ -1,6 +1,7 @@
-"""System with generative hypotheses influencing promotion."""
+"""File clerk with trace log for the procedural auditor."""
 
 import numpy as np
+from typing import Dict, List, Any, Optional
 from .randomness_gate import RandomnessGate
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, ChaosPile
@@ -28,7 +29,7 @@ class NoiseSeparatedSystem:
         max_chaos: int = 5_000,
         chaos_promote_budget: float = 0.15,
         revalidate_interval: int = 40,
-        audit_every: int = 20,
+        audit_every: int = 25,
     ):
         self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
@@ -39,7 +40,7 @@ class NoiseSeparatedSystem:
         self.knowledge = KnowledgeLayer()
         self.wisdom = WisdomLayer()
         self.chaos = ChaosPile(max_rejected=max_chaos)
-        self.auditor = Auditor(error_tol=demote_error_tol)
+        self.auditor = Auditor()
         self.hypotheses = HypothesisTracker()
 
         self.promote_hits = promote_hits
@@ -59,6 +60,42 @@ class NoiseSeparatedSystem:
         self._reentries = 0
         self._chaos_promotions = 0
         self._recent_agreements = []
+        # Trace: key -> list of events
+        self._traces: Dict[str, List[Dict[str, Any]]] = {}
+        self._recent_inputs: List[np.ndarray] = []
+
+    def _trace_key(self, x: np.ndarray) -> str:
+        return str(np.round(np.asarray(x).ravel()[:4], 3).tolist())
+
+    def _record(self, x: np.ndarray, event: Dict[str, Any]):
+        key = self._trace_key(x)
+        self._traces.setdefault(key, []).append({"step": self._step, **event})
+        if len(self._traces[key]) > 20:
+            self._traces[key] = self._traces[key][-20:]
+        self._recent_inputs.append(np.asarray(x))
+        if len(self._recent_inputs) > 100:
+            self._recent_inputs.pop(0)
+
+    def get_trace(self, key: str) -> List[Dict[str, Any]]:
+        return self._traces.get(key, [])
+
+    # --- re-file methods the auditor may call ---
+    def refile_demote(self, key: str):
+        # Remove matching reactive entries and weaken knowledge
+        # (simplified: clear a few reactive keys)
+        for k in list(self.reactive.table.keys())[:3]:
+            self.reactive.table.pop(k, None)
+
+    def refile_weaken_wisdom(self, key: str):
+        for e in self.wisdom.entries:
+            e.confidence = max(0.0, e.confidence - 0.3)
+
+    def refile_weaken_knowledge(self, key: str):
+        self.knowledge.fade()
+
+    def refile_to_thought(self, key: str):
+        # No-op placeholder; real re-injection would need the original x
+        pass
 
     def save(self, path: str):
         _save(self, path)
@@ -76,9 +113,6 @@ class NoiseSeparatedSystem:
             self.explore_prob = min(self.explore_max, self.explore_prob * 1.05 + 0.005)
         else:
             self.explore_prob = max(self.explore_min, self.explore_prob * 0.98)
-        if self._reentries > 0 and self._step % 30 == 0:
-            self.explore_prob = min(self.explore_max, self.explore_prob + 0.01)
-            self._reentries = max(0, self._reentries - 1)
 
     def _chaos_budget_ok(self) -> bool:
         if self._step < 10:
@@ -86,7 +120,6 @@ class NoiseSeparatedSystem:
         return (self._chaos_promotions / max(self._step, 1)) < self.chaos_promote_budget
 
     def _propose_hypothesis(self, x):
-        """Draw a generative sample and register it as a hypothesis."""
         y_hat = self.thought.mind.sample_generative(x)
         if y_hat is not None:
             self.hypotheses.propose(x, y_hat, self._step)
@@ -98,7 +131,6 @@ class NoiseSeparatedSystem:
         is_noise = score < self.gate.threshold
         self.gate.update(score, is_noise)
 
-        # Update existing hypotheses with this observation
         self.hypotheses.observe(x, y, self._step)
 
         if y is not None:
@@ -114,15 +146,18 @@ class NoiseSeparatedSystem:
             self.chaos.reject(x)
             self.thought.observe(x, y)
             self._propose_hypothesis(x)
+            self._record(x, {"kind": "explored_chaos"})
             return "explored_chaos"
 
         if is_noise:
             self.chaos.reject(x)
+            self._record(x, {"kind": "routed_chaos", "score": score})
             return "chaos"
 
         self.thought.observe(x, y)
         self.short_term.add(x, score, y)
-        # Occasionally propose a generative hypothesis
+        self._record(x, {"kind": "to_thought", "score": score, "y": y})
+
         if self._step % 5 == 0:
             self._propose_hypothesis(x)
 
@@ -130,11 +165,7 @@ class NoiseSeparatedSystem:
         item = self.knowledge.find_item(x)
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
         hyp_score = self.hypotheses.confirmation_score(x)
-
-        # Hypothesis confirmation can relax the hit requirement slightly
-        hits_needed = self.promote_hits
-        if hyp_score > 0.5:
-            hits_needed = max(2, self.promote_hits - 1)
+        hits_needed = self.promote_hits - (1 if hyp_score > 0.5 else 0)
 
         if (
             existing is not None
@@ -146,11 +177,13 @@ class NoiseSeparatedSystem:
             stored_y = y if y is not None else existing.get("output")
             boost = self.knowledge_boost + 0.2 * hyp_score
             self.knowledge.add_or_reinforce(x, stored_y, boost=boost, step=self._step)
+            self._record(x, {"kind": "promoted_knowledge", "y": stored_y})
             if age_ok:
                 item = self.knowledge.find_item(x)
                 if item and item.strength >= self.wisdom_strength:
                     self.wisdom.add(x, stored_y, confidence=item.strength, step=self._step)
                     self.reactive.store(x, stored_y)
+                    self._record(x, {"kind": "promoted_wisdom", "y": stored_y})
                     return "promoted_wisdom"
             return "promoted_knowledge"
 
@@ -162,9 +195,12 @@ class NoiseSeparatedSystem:
             self._check_demotions(x, y)
             self._revalidate_wisdom()
 
-        if self._step % self.audit_every == 0:
-            findings = self.auditor.inspect(self)
-            self.auditor.apply(self, findings)
+        # Procedural audit on a recent input
+        if self._step % self.audit_every == 0 and self._recent_inputs and y is not None:
+            suspect = self._recent_inputs[-1]
+            finding = self.auditor.audit_input(self, suspect, observed_y=y)
+            if finding:
+                self.auditor.apply(self, finding)
 
         return "thought"
 
@@ -201,16 +237,21 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         w = self.wisdom.lookup(x)
         if w is not None:
+            self._record(x, {"kind": "predict", "pred": w, "via": "wisdom"})
             return w, "wisdom"
         r = self.reactive.lookup(x)
         if r is not None:
+            self._record(x, {"kind": "predict", "pred": r, "via": "reactive"})
             return r, "reactive"
         k = self.knowledge.lookup(x)
         if k is not None:
+            self._record(x, {"kind": "predict", "pred": k, "via": "knowledge"})
             return k, "knowledge"
         if self.gate.score(x) < self.gate.threshold:
             return self.chaos.sample(getattr(x, "shape", (1,))), "chaos"
-        return self.thought.sample(x), "thought"
+        pred = self.thought.sample(x)
+        self._record(x, {"kind": "predict", "pred": pred, "via": "thought"})
+        return pred, "thought"
 
     def stats(self) -> dict:
         return {
@@ -222,7 +263,6 @@ class NoiseSeparatedSystem:
             "chaos": len(self.chaos),
             "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
-            "explore_prob": round(self.explore_prob, 4),
-            "gate_threshold": round(self.gate.threshold, 3),
+            "traces": len(self._traces),
             "step": self._step,
         }
