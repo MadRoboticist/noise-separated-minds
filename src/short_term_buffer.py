@@ -21,7 +21,8 @@ class ShortTermBuffer:
             "hits": 1,
         })
 
-    def find_similar(self, x: np.ndarray, tol: float = 0.1) -> Optional[dict]:
+    def find_similar(self, x: np.ndarray, tol: float = 0.35) -> Optional[dict]:
+        """Relaxed tolerance so noisy versions of the same pattern accumulate hits."""
         x = np.asarray(x).ravel()
         for item in reversed(self.buffer):
             if item["x"].shape == x.shape and np.allclose(item["x"], x, atol=tol):
