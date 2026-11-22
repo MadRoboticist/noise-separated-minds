@@ -21,7 +21,9 @@ class ReactiveMind:
             try:
                 xi = np.frombuffer(k, dtype=float)
                 if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.6:
-                    self.table[k] = (y, strength)
+                    prev = self.table[k]
+                    hits = prev[2] + 1 if isinstance(prev, tuple) and len(prev) > 2 else 2
+                    self.table[k] = (y, min(strength + 0.1, 5.0), hits)
                     return
             except Exception:
                 continue
@@ -542,16 +544,20 @@ class ChaosPile:
 
 
     def confidence(self, x) -> float:
-        """High only after many hits on a close match."""
+        """High only after many reinforcements on a close match."""
         x = np.asarray(x, dtype=float).ravel()
         best = 0.0
-        for item in self.items:
-            if item.x.shape != x.shape:
+        for k, val in self.table.items():
+            try:
+                xi = np.frombuffer(k, dtype=float)
+            except Exception:
                 continue
-            d = np.linalg.norm(item.x - x)
-            if d < 0.5:
-                # strength saturates; require many hits for high confidence
-                best = max(best, min(1.0, item.strength / 5.0) * min(1.0, item.hits / 30.0))
+            if xi.shape != x.shape:
+                continue
+            if np.linalg.norm(xi - x) < 0.6:
+                strength = val[1] if isinstance(val, tuple) else 1.0
+                hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
+                best = max(best, min(1.0, strength / 3.0) * min(1.0, hits / 25.0))
         return best
 
 class TraumaStore:
