@@ -55,6 +55,7 @@ class MindGraph:
 
     def set_weight(self, src: str, dst: str, w: float):
         self.edges[(src, dst)] = float(w)
+        self.normalize()
 
     def normalize(self):
         """Make weights into each destination sum to 1."""

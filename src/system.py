@@ -488,23 +488,44 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         mode = getattr(self, "graph_mode", "blend")
 
-        # Collect available votes
-        votes = {}
+        # Raw signals from each store
+        raw = {}
         r = self.reactive.lookup(x)
         if r is not None:
-            votes["reactive"] = float(r)
+            raw["reactive"] = float(r)
         t = self.trauma.lookup(x)
         if t is not None:
-            votes["trauma"] = float(t)
+            raw["trauma"] = float(t)
         w = self.wisdom.lookup(x)
         if w is not None:
-            votes["wisdom"] = float(w)
+            raw["wisdom"] = float(w)
         k = self.knowledge.lookup(x)
         if k is not None:
-            votes["knowledge"] = float(k)
+            raw["knowledge"] = float(k)
         thought_pred = self.thought.sample(x)
         if thought_pred is not None:
-            votes["thought"] = float(thought_pred)
+            raw["thought"] = float(thought_pred)
+        # Chaos contributes only if the gate says this point is noise
+        if self.gate.score(x) < self.gate.threshold:
+            raw["chaos"] = 0.0  # no structured prediction
+
+        # Propagate: each node is a weighted mix of its raw value and its inputs
+        def mix(node, raw_val):
+            incoming = self.graph.informed_by(node)
+            num = (raw_val if raw_val is not None else 0.0)
+            den = (1.0 if raw_val is not None else 0.0)
+            for src, w in incoming.items():
+                if src in raw and src != node:
+                    num += w * raw[src]
+                    den += w
+            return (num / den) if den > 0 else raw_val
+
+        votes = {}
+        for node in ("thought", "knowledge", "reactive", "trauma", "wisdom", "chaos"):
+            if node in raw or self.graph.informed_by(node):
+                v = mix(node, raw.get(node))
+                if v is not None:
+                    votes[node] = v
 
         if mode == "cascade":
             for name in ("reactive", "wisdom", "knowledge", "thought"):
