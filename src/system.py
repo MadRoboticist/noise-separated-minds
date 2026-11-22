@@ -266,7 +266,9 @@ class NoiseSeparatedSystem:
                 # Train feedback only on structured predictions
                 _, via = self.predict(x)
                 if "chaos" not in str(via):
-                    self.feedback.observe(x, float(y) - float(pred))
+                    # Down-weight the residual when input dynamics are uncertain
+                    scale = 1.0 - 0.5 * self._input_uncertainty()
+                    self.feedback.observe(x, scale * (float(y) - float(pred)))
             self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
@@ -537,6 +539,14 @@ class NoiseSeparatedSystem:
             self._checkpoint_err = mean_err
         self._checkpoint_step = self._step
 
+    def _input_uncertainty(self) -> float:
+        """Recent next-input error, normalized to ~[0, 1].
+        High means the input dynamics are hard to predict.
+        """
+        if not self._input_err_window:
+            return 0.5
+        return float(np.clip(np.mean(self._input_err_window[-20:]), 0.0, 2.0)) / 2.0
+
     def _nudge_graph(self, x, y, pred):
         """Nudge every edge by residual size, weighted by its contribution.
         Good residual strengthens used edges; large residual weakens them.
@@ -549,7 +559,9 @@ class NoiseSeparatedSystem:
         # Scale in [-0.02, +0.02] based on residual vs tolerance
         tol = max(self.demote_error_tol, 1e-6)
         signed = float(np.clip(1.0 - err / tol, -1.0, 1.0))
-        step = 0.02 * signed
+        # High input uncertainty -> smaller graph steps (dynamics unreliable)
+        scale = 1.0 - 0.7 * self._input_uncertainty()
+        step = 0.02 * signed * scale
 
         # Credit: edges into output are nudged proportional to their weight
         # (higher weight = more responsibility for the residual)
