@@ -8,11 +8,11 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Surgical unlearn. Recurrence counter tracks how many times the same key has been unlearned (`stats()["recurrent_unlearns"]`).
+Surgical unlearn with recurrence counter (`stats()["recurrent_unlearns"]`).
 
 ## Generative blender
 
-Confirmed hypotheses raise a bonus weight on GMM and latent-residual perspectives inside the ensemble blender. The bonus slowly decays.
+Confirmed hypotheses raise a bonus on GMM / latent-residual weights. Bonus decays.
 
 ## Calibration
 
@@ -21,6 +21,14 @@ Thought temperature scaling + Wisdom confidence reliability.
 ## Chaos probing
 
 Threshold proximity + similarity to recent good inputs.
+
+## Persistence
+
+`save` / `load` round-trips config, temperature, calibration bins, and unlearn counts.
+
+```bash
+python tests/test_persistence.py
+```
 
 ## Comparative evaluation
 
