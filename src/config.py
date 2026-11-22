@@ -25,7 +25,7 @@ class SystemConfig:
     @classmethod
     def small(cls):
         """Smaller buffers for comparative tests."""
-        return cls(max_obs=200, max_chaos=500, promote_hits=3, min_age=4)
+        return cls(max_obs=200, max_chaos=500, promote_hits=2, promote_score=0.25, min_age=4)
 
     @classmethod
     def large(cls):
