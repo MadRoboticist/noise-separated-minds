@@ -508,6 +508,9 @@ class NoiseSeparatedSystem:
         # Chaos contributes only if the gate says this point is noise
         if self.gate.score(x) < self.gate.threshold:
             raw["chaos"] = 0.0  # no structured prediction
+        # Auditor node: if recent findings exist, it signals the clerk
+        if self.auditor.findings:
+            raw["auditor"] = 1.0  # presence of a finding
 
         # Propagate: each node is a weighted mix of its raw value and its inputs
         def mix(node, raw_val):

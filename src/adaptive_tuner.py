@@ -31,11 +31,6 @@ PARAM_SPACE = {
     "audit_every": [10**9, 15, 30, 60],
     "revalidate_interval": [20, 40, 80],
     "graph_mode": ["cascade", "blend", "thought_consults"],
-    "edge_w_thought": [0.5, 1.0, 1.5, 2.0],
-    "edge_w_knowledge": [0.5, 1.0, 1.5, 2.0],
-    "edge_w_wisdom": [0.5, 1.0, 1.5, 2.5],
-    "edge_w_reactive": [0.3, 0.7, 1.0, 1.5],
-    "edge_w_trauma": [0.1, 0.3, 0.5],
 }
 
 

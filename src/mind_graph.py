@@ -40,6 +40,15 @@ DEFAULT_EDGES = {
     ("trauma", "output"): 0.2,
     ("wisdom", "output"): 0.9,
     ("chaos", "output"): 0.1,
+    # Auditor takes input from everything; its only output is to the clerk
+    ("thought", "auditor"): 0.5,
+    ("knowledge", "auditor"): 0.6,
+    ("reactive", "auditor"): 0.5,
+    ("trauma", "auditor"): 0.9,
+    ("wisdom", "auditor"): 0.4,
+    ("chaos", "auditor"): 0.7,
+    ("output", "auditor"): 0.5,
+    ("auditor", "clerk"): 1.0,
 }
 
 
