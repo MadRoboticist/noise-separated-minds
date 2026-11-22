@@ -12,18 +12,15 @@ s.observe_context(["cat", 3, "warm"], y=0.5)
 pred, via = s.predict_context("the sky is blue")
 ```
 
+Benchmark:
+```bash
+python benchmarks/context_bench.py
+```
+
 ## Reactive vs Wisdom
 
 - **Reactive** = muscle memory (repetition or trauma).
 - **Wisdom** = later consistency after earlier deliberation.
-
-## Configuration
-
-`SystemConfig` (presets `small()` / `large()`).
-
-## Auditor
-
-Surgical unlearn with before	o after values and recurrence count.
 
 ## Comparative evaluation
 
