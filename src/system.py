@@ -371,8 +371,7 @@ class NoiseSeparatedSystem:
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
         hyp_score = self.hypotheses.confirmation_score(x)
         hits_needed = max(2, self.promote_hits - (1 if hyp_score > 0.5 else 0))
-        # Uncertain input dynamics -> require more hits before promoting
-                key = self._trace_key(x)
+        key = self._trace_key(x)
 
         # Always land structured repeats in Knowledge first
         if existing is not None and existing["hits"] >= hits_needed and score >= self.promote_score:
