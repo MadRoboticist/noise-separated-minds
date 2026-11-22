@@ -27,13 +27,27 @@ class ThoughtLayer:
 
 
 class KnowledgeItem:
+    """One Gaussian component: running mean of x, running mean of y."""
     def __init__(self, x: np.ndarray, y: Any, strength: float = 1.0, step: int = 0):
-        self.x = np.asarray(x, dtype=float).ravel()
-        self.y = y
+        self.x = np.asarray(x, dtype=float).ravel()  # mean of x
+        self.y = float(y) if y is not None else 0.0  # mean of y
+        self.y_var = 1.0
+        self.n = 1
         self.strength = strength
         self.hits = 1
         self.first_seen = step
         self.last_seen = step
+
+    def update(self, x, y):
+        x = np.asarray(x, dtype=float).ravel()
+        self.n += 1
+        self.x += (x - self.x) / self.n
+        if y is not None:
+            y = float(y)
+            delta = y - self.y
+            self.y += delta / self.n
+            self.y_var += (delta * (y - self.y) - self.y_var) / self.n
+        self.hits += 1
 
 
 class KnowledgeLayer:
@@ -46,11 +60,9 @@ class KnowledgeLayer:
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
             if np.linalg.norm(item.x - x) < 1.0:
-                item.hits += 1
+                item.update(x, y)
                 item.strength = max(0.0, min(3.0, item.strength + boost))
                 item.last_seen = step
-                if y is not None:
-                    item.y = y
                 return item
         if boost > 0:
             item = KnowledgeItem(x, y, strength=max(0.5, boost), step=step)
@@ -94,14 +106,27 @@ class KnowledgeLayer:
 
 
 class WisdomEntry:
+    """Gaussian component for a stable pattern."""
     def __init__(self, x: np.ndarray, y: Any, confidence: float = 1.0, step: int = 0):
         self.x = np.asarray(x, dtype=float).ravel()
-        self.y = y
+        self.y = float(y) if y is not None else 0.0
+        self.y_var = 0.1
+        self.n = 1
         self.confidence = confidence
         self.checks = 0
         self.failures = 0
         self.created = step
         self.last_checked = step
+
+    def update(self, x, y):
+        x = np.asarray(x, dtype=float).ravel()
+        self.n += 1
+        self.x += (x - self.x) / self.n
+        if y is not None:
+            y = float(y)
+            delta = y - self.y
+            self.y += delta / self.n
+            self.y_var += (delta * (y - self.y) - self.y_var) / self.n
 
 
 class WisdomLayer:
@@ -114,6 +139,7 @@ class WisdomLayer:
         # Coarse match so one pattern is one entry
         for e in self.entries:
             if np.linalg.norm(e.x - x) < 0.5:
+                e.update(x, y)
                 e.confidence = max(e.confidence, confidence)
                 return
         self.entries.append(WisdomEntry(x, y, confidence, step))

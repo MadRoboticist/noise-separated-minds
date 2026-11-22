@@ -495,32 +495,47 @@ class AnalyticalMind:
 
 
 class ChaosPile:
+    """Running Gaussian model of rejected inputs. Fixed size."""
     def __init__(self, max_rejected: int = 5_000):
-        self.rejected: List[np.ndarray] = []
-        self.max_rejected = max_rejected
+        self.n = 0
+        self.mean = None
+        self.var = None
         self.probe_successes = 0
         self.probe_attempts = 0
+        # compat: empty list so old code that checks .rejected still works
+        self.rejected: List[np.ndarray] = []
 
     def reject(self, x: np.ndarray):
-        self.rejected.append(np.asarray(x))
-        if len(self.rejected) > self.max_rejected:
-            self.rejected.pop(0)
+        x = np.asarray(x, dtype=float).ravel()
+        if self.mean is None:
+            self.mean = x.copy()
+            self.var = np.ones_like(x)
+            self.n = 1
+            return
+        if self.mean.shape != x.shape:
+            return
+        self.n += 1
+        delta = x - self.mean
+        self.mean += delta / self.n
+        self.var += (delta * (x - self.mean) - self.var) / self.n
+        self.var = np.maximum(self.var, 1e-6)
 
     def sample(self, shape) -> np.ndarray:
-        return np.random.randn(*shape)
+        if self.mean is None:
+            return np.random.randn(*shape)
+        return self.mean + np.sqrt(self.var) * np.random.randn(*self.mean.shape)
 
     def probe(self, n: int = 5) -> List[np.ndarray]:
-        if not self.rejected:
+        if self.mean is None:
             return []
         self.probe_attempts += 1
-        idx = np.random.choice(len(self.rejected), size=min(n, len(self.rejected)), replace=False)
-        return [self.rejected[i] for i in idx]
+        return [self.sample(self.mean.shape) for _ in range(n)]
 
     def record_probe_success(self):
         self.probe_successes += 1
 
     def __len__(self):
-        return len(self.rejected)
+        return self.n
 
 
 class TraumaStore:
