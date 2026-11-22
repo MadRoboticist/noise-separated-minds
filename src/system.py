@@ -688,7 +688,9 @@ class NoiseSeparatedSystem:
             den = (1.0 if raw_val is not None else 0.0)
             for src, w in incoming.items():
                 if src in raw and src != node:
-                    num += w * raw[src]
+                    # Chaos and trauma suppress wisdom rather than support it
+                    sign = -1.0 if (node == "wisdom" and src in ("chaos", "trauma")) else 1.0
+                    num += sign * w * raw[src]
                     den += w
             return (num / den) if den > 0 else raw_val
 
