@@ -403,8 +403,8 @@ class NoiseSeparatedSystem:
                 r_ok = (react_val is None) or (abs(float(react_val) - float(stored_y)) < 0.3)
                 # Wisdom is the hardest: many hits, knowledge already strong,
                 # and the pattern has been seen across a long span.
-                sustained = existing["hits"] >= max(250, hits_needed * 60)
-                know_strong = know_item is not None and know_item.strength >= 2.0
+                sustained = existing["hits"] >= max(400, hits_needed * 100)
+                know_strong = know_item is not None and know_item.strength >= 3.0
                 layers_agree = t_ok and k_ok and r_ok and sustained and age_ok and know_strong
             if layers_agree:
                 conf = know_item.strength if know_item else 1.0
