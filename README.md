@@ -9,16 +9,19 @@ Unsupervised architecture that separates pure randomness from structured signal,
 3. **Knowledge**: Medium-term. Can fade or be weakened.
 4. **Wisdom**: Long-term. Count only grows; confidence can fall.
 5. **Reactive**: Deterministic functions (bounded).
-6. **Chaos**: Residual randomness (bounded), with re-entry.
+6. **Chaos**: Residual randomness with **active probing** and a promotion budget.
 
-## Thought ensemble (richer generative capacity)
+## Chaos
 
-- Local weighted, nearest-neighbor, online linear
-- **Gaussian mixture** (3 components on a 1-D projection) — can sample from p(y|x)
-- **Latent residual** (random projection + local model) — can sample
-- `sample_generative(x)` draws from a generative perspective when available
-- Auto-disable of collapsed perspectives + event log
-- Accuracy × inverse-uncertainty blender
+- Bounded reject pile.
+- `probe(n)` actively samples candidates for re-testing.
+- Successful probes re-enter Thought and are counted.
+- Promotion of chaos-originated material is limited by `chaos_promote_budget` (fraction of steps).
+- Stats report probe attempts and successes.
+
+## Thought ensemble
+
+Local, nearest-neighbor, online linear, GMM, latent residual. Generative sampling, auto-disable, event log.
 
 ## Randomness gate
 
@@ -33,5 +36,4 @@ Adaptive threshold + residual noise rate.
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
-python tests/test_gate.py
 ```
