@@ -418,6 +418,8 @@ class NoiseSeparatedSystem:
 
         if self._step % 6 == 0:
             self.knowledge.fade()
+            self.reactive.fade()
+            self.trauma.fade()
             if self._active_chaos_probe():
                 self._reentries += 1
                 self._chaos_promotions += 1

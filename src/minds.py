@@ -13,25 +13,26 @@ class ReactiveMind:
         v = np.round(np.asarray(x, dtype=float).ravel(), 1)
         return v.tobytes()
 
-    def store(self, x: np.ndarray, y: Any):
+    def store(self, x: np.ndarray, y: Any, strength: float = 1.0):
+        """Store with a strength that can fade."""
         # One pattern = one entry. If a nearby key exists, reinforce it instead.
         x = np.asarray(x, dtype=float).ravel()
         for k in list(self.table.keys()):
             try:
                 xi = np.frombuffer(k, dtype=float)
                 if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.6:
-                    self.table[k] = y
+                    self.table[k] = (y, strength)
                     return
             except Exception:
                 continue
         if len(self.table) >= self.max_entries:
             self.table.pop(next(iter(self.table)))
-        self.table[self._key(x)] = y
+        self.table[self._key(x)] = (y, strength)
 
     def lookup(self, x: np.ndarray, tol: float = 0.6) -> Optional[Any]:
         exact = self.table.get(self._key(x))
         if exact is not None:
-            return exact
+            return exact[0] if isinstance(exact, tuple) else exact
         x = np.asarray(x, dtype=float).ravel()
         best, best_d = None, tol
         for k, v in self.table.items():
@@ -46,6 +47,33 @@ class ReactiveMind:
             except Exception:
                 continue
         return best
+
+    def fade(self, rate: float = 0.995, min_strength: float = 0.05):
+        """Decay strength; drop entries that fall below min_strength."""
+        dead = []
+        for k, v in list(self.table.items()):
+            if isinstance(v, tuple):
+                y, s = v
+                s *= rate
+                if s < min_strength:
+                    dead.append(k)
+                else:
+                    self.table[k] = (y, s)
+        for k in dead:
+            self.table.pop(k, None)
+
+    def fade(self, rate: float = 0.99, min_strength: float = 0.05):
+        """Decay trauma strength; drop weak entries."""
+        dead = []
+        for k, entry in list(self.table.items()):
+            if len(entry) >= 5:
+                s = entry[4] * rate
+                if s < min_strength:
+                    dead.append(k)
+                else:
+                    self.table[k] = entry[:4] + (s,)
+        for k in dead:
+            self.table.pop(k, None)
 
     def __len__(self):
         return len(self.table)
@@ -487,12 +515,13 @@ class TraumaStore:
 
     def store(self, x, y, error: float, step: int):
         key = self._key(x)
-        self.table[key] = (np.asarray(x, dtype=float).ravel().copy(), y, float(error), step)
+        self.table[key] = (np.asarray(x, dtype=float).ravel().copy(), y, float(error), step, 1.0)
 
     def lookup(self, x, tol: float = 0.5):
         x = np.asarray(x, dtype=float).ravel()
         best, best_d = None, tol
-        for k, (xi, y, err, step) in self.table.items():
+        for k, entry in self.table.items():
+            xi, y, err, step = entry[0], entry[1], entry[2], entry[3]
             if xi.shape != x.shape:
                 continue
             d = np.linalg.norm(xi - x)
@@ -502,6 +531,33 @@ class TraumaStore:
 
     def _key(self, x):
         return np.asarray(x, dtype=float).ravel().tobytes()
+
+    def fade(self, rate: float = 0.995, min_strength: float = 0.05):
+        """Decay strength; drop entries that fall below min_strength."""
+        dead = []
+        for k, v in list(self.table.items()):
+            if isinstance(v, tuple):
+                y, s = v
+                s *= rate
+                if s < min_strength:
+                    dead.append(k)
+                else:
+                    self.table[k] = (y, s)
+        for k in dead:
+            self.table.pop(k, None)
+
+    def fade(self, rate: float = 0.99, min_strength: float = 0.05):
+        """Decay trauma strength; drop weak entries."""
+        dead = []
+        for k, entry in list(self.table.items()):
+            if len(entry) >= 5:
+                s = entry[4] * rate
+                if s < min_strength:
+                    dead.append(k)
+                else:
+                    self.table[k] = entry[:4] + (s,)
+        for k in dead:
+            self.table.pop(k, None)
 
     def __len__(self):
         return len(self.table)
