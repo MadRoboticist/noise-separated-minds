@@ -241,6 +241,9 @@ class NoiseSeparatedSystem:
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
+        if y is not None:
+            pred, _ = self.predict(x)
+            self._nudge_graph(x, y, pred)
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
             suspect = self._recent_good[-1]
@@ -486,6 +489,19 @@ class NoiseSeparatedSystem:
             self.knowledge.add_or_reinforce(x, y, boost=-0.4, step=self._step)
             self._log("weaken_knowledge")
 
+
+
+    def _nudge_graph(self, x, y, pred):
+        """Nudge edges that fed the prediction based on residual."""
+        if pred is None or y is None:
+            return
+        err = abs(float(pred) - float(y))
+        # Small step: good prediction strengthens used edges, bad weakens them
+        step = 0.01 if err < self.demote_error_tol else -0.005
+        for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
+            w = self.graph.weight(src, "output")
+            if w > 0:
+                self.graph.set_weight(src, "output", max(0.0, min(1.0, w + step * w)))
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
