@@ -1,4 +1,4 @@
-"""System with adaptive randomness gate."""
+"""System with active chaos probing and promotion budget."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -23,6 +23,7 @@ class NoiseSeparatedSystem:
         demote_error_tol: float = 0.5,
         max_obs: int = 2_000,
         max_chaos: int = 5_000,
+        chaos_promote_budget: float = 0.15,
     ):
         self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
@@ -43,8 +44,10 @@ class NoiseSeparatedSystem:
         self.explore_min = explore_min
         self.explore_max = explore_max
         self.demote_error_tol = demote_error_tol
+        self.chaos_promote_budget = chaos_promote_budget
         self._step = 0
         self._reentries = 0
+        self._chaos_promotions = 0
         self._recent_agreements = []
 
     def save(self, path: str):
@@ -66,6 +69,11 @@ class NoiseSeparatedSystem:
         if self._reentries > 0 and self._step % 30 == 0:
             self.explore_prob = min(self.explore_max, self.explore_prob + 0.01)
             self._reentries = max(0, self._reentries - 1)
+
+    def _chaos_budget_ok(self) -> bool:
+        if self._step < 10:
+            return True
+        return (self._chaos_promotions / self._step) < self.chaos_promote_budget
 
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
@@ -101,6 +109,7 @@ class NoiseSeparatedSystem:
             and existing["hits"] >= self.promote_hits
             and score >= self.promote_score
             and agreement >= self.min_agreement
+            and self._chaos_budget_ok()
         ):
             stored_y = y if y is not None else existing.get("output")
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost)
@@ -111,20 +120,22 @@ class NoiseSeparatedSystem:
                     return "promoted_wisdom"
             return "promoted_knowledge"
 
-        if self._step % 8 == 0:
+        if self._step % 6 == 0:
             self.knowledge.fade()
-            if self._try_chaos_reentry():
+            if self._active_chaos_probe():
                 self._reentries += 1
+                self._chaos_promotions += 1
             self._check_demotions(x, y)
 
         return "thought"
 
-    def _try_chaos_reentry(self) -> bool:
-        if not self.chaos.rejected:
-            return False
-        for cx in self.chaos.rejected[-8:]:
-            if self.gate.score(cx) >= self.gate.threshold + 0.05:
+    def _active_chaos_probe(self) -> bool:
+        """Actively sample from chaos and re-test."""
+        candidates = self.chaos.probe(n=4)
+        for cx in candidates:
+            if self.gate.score(cx) >= self.gate.threshold + 0.02:
                 self.thought.observe(cx, y=None)
+                self.chaos.record_probe_success()
                 return True
         return False
 
@@ -165,7 +176,8 @@ class NoiseSeparatedSystem:
             "wisdom_active": self.wisdom.active_count,
             "reactive": len(self.reactive),
             "chaos": len(self.chaos),
-            "short_term": len(self.short_term.buffer),
+            "chaos_probes": self.chaos.probe_attempts,
+            "chaos_probe_successes": self.chaos.probe_successes,
             "explore_prob": round(self.explore_prob, 4),
             "gate_threshold": round(self.gate.threshold, 3),
             "residual_noise_rate": round(self.gate.residual_noise_rate(), 3),
