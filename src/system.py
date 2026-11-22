@@ -1,4 +1,4 @@
-"""File clerk with richer audit export."""
+"""File clerk. Chaos probing prefers threshold proximity + similarity to good inputs."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -322,19 +322,32 @@ class NoiseSeparatedSystem:
 
         return "thought"
 
+    def _similarity_to_good(self, x: np.ndarray) -> float:
+        """Higher is better (closer to known good inputs)."""
+        if not self._recent_good:
+            return 0.0
+        x = np.asarray(x).ravel()
+        dists = [np.linalg.norm(g.ravel() - x) for g in self._recent_good[-8:]]
+        return float(1.0 / (1.0 + min(dists)))
+
     def _active_chaos_probe(self) -> bool:
+        """Prefer rejects near threshold that also resemble known good inputs."""
         if not self.chaos.rejected:
             return False
         scored = []
-        for cx in self.chaos.rejected[-30:]:
+        for cx in self.chaos.rejected[-40:]:
             s = self.gate.score(cx)
-            scored.append((abs(s - self.gate.threshold), cx, s))
+            thr_dist = abs(s - self.gate.threshold)
+            sim = self._similarity_to_good(cx)
+            # Lower score is better: threshold distance minus similarity bonus
+            priority = thr_dist - 0.4 * sim
+            scored.append((priority, cx, s, sim))
         scored.sort(key=lambda t: t[0])
-        for _, cx, s in scored[:4]:
-            if s >= self.gate.threshold - 0.05:
+        for _, cx, s, sim in scored[:5]:
+            if s >= self.gate.threshold - 0.08:
                 self.thought.observe(cx, y=None)
                 self.chaos.record_probe_success()
-                self._log("chaos_probe_success", score=round(s, 3))
+                self._log("chaos_probe_success", score=round(s, 3), sim=round(sim, 3))
                 return True
         return False
 
