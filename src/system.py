@@ -401,8 +401,11 @@ class NoiseSeparatedSystem:
                 t_ok = abs(float(thought_pred) - float(stored_y)) < 0.3
                 k_ok = abs(float(know_item.y) - float(stored_y)) < 0.3
                 r_ok = (react_val is None) or (abs(float(react_val) - float(stored_y)) < 0.3)
-                sustained = existing["hits"] >= max(15, hits_needed * 4)
-                layers_agree = t_ok and k_ok and r_ok and sustained and age_ok
+                # Wisdom is the hardest: many hits, knowledge already strong,
+                # and the pattern has been seen across a long span.
+                sustained = existing["hits"] >= max(80, hits_needed * 20)
+                know_strong = know_item is not None and know_item.strength >= 1.2
+                layers_agree = t_ok and k_ok and r_ok and sustained and age_ok and know_strong
             if layers_agree:
                 conf = know_item.strength if know_item else 1.0
                 self.wisdom.add(x, stored_y, confidence=conf, step=self._step)
