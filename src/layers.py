@@ -2,7 +2,7 @@
 
 - Thought: disposable, high plasticity (the analytical ensemble lives here).
 - Knowledge: can fade with disuse or contradiction.
-- Wisdom: only grows; append-only invariants.
+- Wisdom: only grows in count; confidence can be checked and reduced.
 """
 
 from typing import Any, List, Optional, Tuple
@@ -87,25 +87,58 @@ class KnowledgeLayer:
         return len(self.items)
 
 
-class WisdomLayer:
-    """Long-term. Only grows."""
+class WisdomEntry:
+    def __init__(self, x: np.ndarray, y: Any, confidence: float = 1.0):
+        self.x = np.asarray(x, dtype=float).ravel()
+        self.y = y
+        self.confidence = confidence
+        self.checks = 0
+        self.failures = 0
 
-    def __init__(self):
-        self.entries: List[Tuple[np.ndarray, Any, float]] = []
+
+class WisdomLayer:
+    """Long-term. Count only grows. Confidence can be reduced by failed checks."""
+
+    def __init__(self, min_confidence: float = 0.3):
+        self.entries: List[WisdomEntry] = []
+        self.min_confidence = min_confidence
 
     def add(self, x: np.ndarray, y: Any, confidence: float = 1.0):
         x = np.asarray(x, dtype=float).ravel()
-        for ex, ey, ec in self.entries:
-            if np.allclose(ex, x, atol=1e-6):
+        for e in self.entries:
+            if np.allclose(e.x, x, atol=1e-6):
                 return
-        self.entries.append((x, y, confidence))
+        self.entries.append(WisdomEntry(x, y, confidence))
 
     def lookup(self, x: np.ndarray, tol: float = 0.1) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
-        for ex, ey, ec in self.entries:
-            if np.linalg.norm(ex - x) < tol:
-                return ey
+        for e in self.entries:
+            if np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
+                return e.y
         return None
+
+    def check(self, x: np.ndarray, y: Any, tol: float = 0.5) -> bool:
+        """Verify a wisdom entry. Returns True if it passed.
+        On failure, confidence is reduced. Entry is never deleted.
+        """
+        if y is None:
+            return True
+        x = np.asarray(x, dtype=float).ravel()
+        for e in self.entries:
+            if np.linalg.norm(e.x - x) < 0.15:
+                e.checks += 1
+                if abs(float(e.y) - float(y)) > tol:
+                    e.failures += 1
+                    e.confidence = max(0.0, e.confidence - 0.25)
+                    return False
+                else:
+                    e.confidence = min(2.0, e.confidence + 0.05)
+                    return True
+        return True
 
     def __len__(self):
         return len(self.entries)
+
+    @property
+    def active_count(self):
+        return sum(1 for e in self.entries if e.confidence >= self.min_confidence)
