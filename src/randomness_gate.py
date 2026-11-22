@@ -1,19 +1,18 @@
-"""More robust unsupervised randomness / structure gate.
+"""Adaptive multi-test randomness gate.
 
-Combines several complementary tests so pure noise is rejected
-before it can reach long-term memory.
+Tracks recent structure scores and adjusts its decision threshold
+to the observed noise floor. Also reports residual-noise statistics.
 """
 
 import numpy as np
-from typing import Union
+from typing import Union, List
 
 
 def spectral_flatness(x: np.ndarray) -> float:
-    """Wiener entropy. Near 1.0 = noise-like."""
     if len(x) < 8:
         return 1.0
     spectrum = np.abs(np.fft.rfft(x - np.mean(x))) ** 2
-    spectrum = spectrum[1:]  # drop DC
+    spectrum = spectrum[1:]
     spectrum = spectrum[spectrum > 1e-12]
     if len(spectrum) == 0:
         return 1.0
@@ -23,7 +22,6 @@ def spectral_flatness(x: np.ndarray) -> float:
 
 
 def histogram_entropy(x: np.ndarray, n_bins: int = 24) -> float:
-    """Normalized histogram entropy. Near 1.0 = unstructured."""
     if len(x) < 4:
         return 1.0
     hist, _ = np.histogram(x, bins=min(n_bins, max(4, len(x) // 2)), density=True)
@@ -36,9 +34,6 @@ def histogram_entropy(x: np.ndarray, n_bins: int = 24) -> float:
 
 
 def autocorr_strength(x: np.ndarray, max_lag: int = 8) -> float:
-    """Mean absolute autocorrelation at short lags.
-    Near 0 = noise; higher = structure. Returns noise-likeness in [0,1].
-    """
     if len(x) < max_lag + 2:
         return 1.0
     x = x - np.mean(x)
@@ -47,56 +42,49 @@ def autocorr_strength(x: np.ndarray, max_lag: int = 8) -> float:
     for lag in range(1, max_lag + 1):
         c = np.dot(x[:-lag], x[lag:]) / var
         corrs.append(abs(c))
-    # High autocorr = structure = low noise score
     return float(np.clip(1.0 - np.mean(corrs), 0.0, 1.0))
 
 
 def diff_entropy(x: np.ndarray) -> float:
-    """Entropy of first differences. Pure noise has high diff entropy."""
     if len(x) < 4:
         return 1.0
-    d = np.diff(x)
-    return histogram_entropy(d, n_bins=16)
+    return histogram_entropy(np.diff(x), n_bins=16)
 
 
 def runs_noise(x: np.ndarray) -> float:
-    """Simple runs-like score on sign of demeaned series.
-    Random series have many runs; structured have fewer.
-    Returns noise-likeness.
-    """
     if len(x) < 6:
         return 1.0
     s = np.sign(x - np.median(x))
     s[s == 0] = 1
     runs = 1 + np.sum(s[1:] != s[:-1])
-    # Expected runs for random ≈ n/2 + 1
     expected = len(x) / 2.0 + 1
-    # More runs than expected → noisier
     ratio = runs / (expected + 1e-8)
     return float(np.clip(ratio / 1.5, 0.0, 1.0))
 
 
 class RandomnessGate:
-    """Multi-test structure score in [0, 1]. Higher = more structured.
-    Low score → route to chaos.
-    """
+    """Multi-test structure score with adaptive threshold."""
 
     def __init__(
         self,
-        w_flat: float = 0.30,
-        w_ent: float = 0.20,
-        w_acf: float = 0.25,
-        w_diff: float = 0.15,
-        w_runs: float = 0.10,
+        base_threshold: float = 0.40,
+        adapt_rate: float = 0.02,
+        window: int = 100,
     ):
-        self.weights = np.array([w_flat, w_ent, w_acf, w_diff, w_runs])
+        self.weights = np.array([0.30, 0.20, 0.25, 0.15, 0.10])
         self.weights /= self.weights.sum()
+        self.base_threshold = base_threshold
+        self.threshold = base_threshold
+        self.adapt_rate = adapt_rate
+        self.window = window
+        self.recent_scores: List[float] = []
+        self.rejected_count = 0
+        self.accepted_count = 0
 
     def score(self, x: Union[np.ndarray, list]) -> float:
         x = np.asarray(x, dtype=float).ravel()
         if len(x) == 0:
             return 0.0
-        # Each helper returns noise-likeness in [0,1]
         noise_scores = np.array([
             spectral_flatness(x),
             histogram_entropy(x),
@@ -107,11 +95,37 @@ class RandomnessGate:
         noise = float(np.dot(self.weights, noise_scores))
         return float(np.clip(1.0 - noise, 0.0, 1.0))
 
-    def is_noise(self, x: Union[np.ndarray, list], threshold: float = 0.40) -> bool:
-        return self.score(x) < threshold
+    def update(self, structure_score: float, was_rejected: bool):
+        """Adapt threshold toward the lower tail of recent scores."""
+        self.recent_scores.append(structure_score)
+        if len(self.recent_scores) > self.window:
+            self.recent_scores.pop(0)
+        if was_rejected:
+            self.rejected_count += 1
+        else:
+            self.accepted_count += 1
+
+        if len(self.recent_scores) >= 20:
+            # Set threshold near the 25th percentile of recent scores,
+            # gently pulled toward the base.
+            p25 = float(np.percentile(self.recent_scores, 25))
+            target = 0.7 * p25 + 0.3 * self.base_threshold
+            self.threshold += self.adapt_rate * (target - self.threshold)
+            self.threshold = float(np.clip(self.threshold, 0.15, 0.7))
+
+    def is_noise(self, x: Union[np.ndarray, list], threshold: float = None) -> bool:
+        thr = self.threshold if threshold is None else threshold
+        s = self.score(x)
+        rejected = s < thr
+        self.update(s, rejected)
+        return rejected
+
+    def residual_noise_rate(self) -> float:
+        """Fraction of recent inputs that were rejected."""
+        total = self.rejected_count + self.accepted_count
+        return self.rejected_count / total if total else 0.0
 
     def detail(self, x: Union[np.ndarray, list]) -> dict:
-        """Return individual test scores for debugging."""
         x = np.asarray(x, dtype=float).ravel()
         return {
             "spectral_flatness": spectral_flatness(x),
@@ -120,4 +134,6 @@ class RandomnessGate:
             "diff_entropy": diff_entropy(x),
             "runs_noise": runs_noise(x),
             "structure": self.score(x),
+            "threshold": self.threshold,
+            "residual_noise_rate": self.residual_noise_rate(),
         }
