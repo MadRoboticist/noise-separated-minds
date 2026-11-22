@@ -23,11 +23,28 @@ class Auditor:
 
     def audit_input(self, clerk, x: np.ndarray, observed_y: Optional[float] = None) -> Optional[AuditFinding]:
         score = clerk.gate.score(x)
-        if score < clerk.gate.threshold:
-            return None
+        # No longer require the point to be above threshold; look for any prior
+        # neighborhood that now contradicts a later observation.
 
-        key = clerk._trace_key(x)
-        trace = clerk.get_trace(key)
+        # Neighborhood match instead of exact key
+        trace = None
+        key = None
+        x = np.asarray(x, dtype=float).ravel()
+        for k, events in list(clerk._traces.items())[-40:]:
+            # recover a representative vector from the first event if stored
+            for e in events:
+                if "x" in e:
+                    cand = np.asarray(e["x"], dtype=float).ravel()
+                    if cand.shape == x.shape and np.linalg.norm(cand - x) < 0.8:
+                        trace = events
+                        key = k
+                        break
+            if trace is not None:
+                break
+        if not trace:
+            # fall back to exact key
+            key = clerk._trace_key(x)
+            trace = clerk.get_trace(key)
         if not trace:
             return None
 
