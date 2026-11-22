@@ -1,4 +1,4 @@
-"""System with adaptive exploration, bounded memory, and persistence."""
+"""System with adaptive randomness gate."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -24,18 +24,16 @@ class NoiseSeparatedSystem:
         max_obs: int = 2_000,
         max_chaos: int = 5_000,
     ):
-        self.gate = RandomnessGate()
+        self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.thought = ThoughtLayer()
-        # propagate bound
         for p in self.thought.mind.perspectives:
             p.max_obs = max_obs
         self.knowledge = KnowledgeLayer()
         self.wisdom = WisdomLayer()
         self.chaos = ChaosPile(max_rejected=max_chaos)
 
-        self.noise_threshold = noise_threshold
         self.promote_hits = promote_hits
         self.promote_score = promote_score
         self.min_agreement = min_agreement
@@ -73,6 +71,8 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
+        is_noise = score < self.gate.threshold
+        self.gate.update(score, is_noise)
 
         if y is not None:
             if not self.wisdom.check(x, y, tol=self.demote_error_tol):
@@ -82,12 +82,13 @@ class NoiseSeparatedSystem:
         agreement = self.thought.mind.agreement(x) if len(self.thought) > 2 else 0.5
         self._adapt_exploration(agreement)
 
-        if score >= self.noise_threshold and np.random.rand() < self.explore_prob:
+        thr = self.gate.threshold
+        if score >= thr and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
             self.thought.observe(x, y)
             return "explored_chaos"
 
-        if score < self.noise_threshold:
+        if is_noise:
             self.chaos.reject(x)
             return "chaos"
 
@@ -122,7 +123,7 @@ class NoiseSeparatedSystem:
         if not self.chaos.rejected:
             return False
         for cx in self.chaos.rejected[-8:]:
-            if self.gate.score(cx) >= self.noise_threshold + 0.05:
+            if self.gate.score(cx) >= self.gate.threshold + 0.05:
                 self.thought.observe(cx, y=None)
                 return True
         return False
@@ -152,7 +153,7 @@ class NoiseSeparatedSystem:
         k = self.knowledge.lookup(x)
         if k is not None:
             return k, "knowledge"
-        if self.gate.score(x) < self.noise_threshold:
+        if self.gate.score(x) < self.gate.threshold:
             return self.chaos.sample(getattr(x, "shape", (1,))), "chaos"
         return self.thought.sample(x), "thought"
 
@@ -166,6 +167,8 @@ class NoiseSeparatedSystem:
             "chaos": len(self.chaos),
             "short_term": len(self.short_term.buffer),
             "explore_prob": round(self.explore_prob, 4),
+            "gate_threshold": round(self.gate.threshold, 3),
+            "residual_noise_rate": round(self.gate.residual_noise_rate(), 3),
             "reentries": self._reentries,
             "step": self._step,
         }
