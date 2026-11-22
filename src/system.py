@@ -428,7 +428,7 @@ class NoiseSeparatedSystem:
                 # and the pattern has been seen across a long span.
                 sustained = existing["hits"] >= max(25, hits_needed * 8)
                 know_strong = know_item is not None and know_item.strength >= 1.2
-                layers_agree = t_ok and k_ok and r_ok and sustained and age_ok and know_strong
+                layers_agree = k_ok and r_ok and sustained and age_ok and know_strong
             if layers_agree:
                 conf = know_item.strength if know_item else 1.0
                 self.wisdom.add(x, stored_y, confidence=conf, step=self._step)
