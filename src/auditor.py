@@ -71,12 +71,12 @@ class Auditor:
                     self.findings.append(finding)
                     return finding
 
-            if kind in ("promoted_wisdom", "promoted_knowledge") and observed_y is not None:
+            if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
                 if promoted is not None and abs(float(promoted) - float(observed_y)) > clerk.demote_error_tol:
                     finding = AuditFinding(
                         key, kind,
-                        "Promotion contradicted later good observation",
+                        "Stored behavior contradicted later good observation",
                         "sever_and_unlearn"
                     )
                     self.findings.append(finding)
