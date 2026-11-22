@@ -61,6 +61,8 @@ class NoiseSeparatedSystem:
         self._unlearn_counts: Dict[str, int] = defaultdict(int)
         # Track early disagreement so we know what required deliberation
         self._early_disagreement: Dict[str, int] = defaultdict(int)
+        self._recent_scores: List[float] = []
+        self.gate_bypass = False
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -234,7 +236,13 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
-        is_noise = score < self.gate.threshold
+        self._recent_scores.append(score)
+        if len(self._recent_scores) > 40:
+            self._recent_scores.pop(0)
+        if len(self._recent_scores) >= 20:
+            med = float(np.median(self._recent_scores))
+            self.gate_bypass = med > self.gate.threshold + 0.15
+        is_noise = (not self.gate_bypass) and (score < self.gate.threshold)
         self.gate.update(score, is_noise)
 
         active_names = self.thought.mind.active_names
