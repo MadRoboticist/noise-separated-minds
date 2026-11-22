@@ -1,26 +1,29 @@
 # Noise-Separated Minds
 
-Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
+Unsupervised online system that tries to keep pure randomness out of memory, then consolidates structured signal across three timescales.
 
-## Benchmarks
+Full write-up: [ARCHITECTURE.md](ARCHITECTURE.md)
 
-```bash
-python benchmarks/comparative.py      # small filtered vs large weak filter
-python benchmarks/context_bench.py    # non-numeric phrases
-python benchmarks/substantial.py      # multi-pattern numeric + text
-python benchmarks/stress_context.py   # context-length sweep
-python benchmarks/ablation.py         # gate / reactive / wisdom ablations + iris
-```
-
-## Reactive / Knowledge / Wisdom
-
-- **Knowledge** receives every structured repeat (can fade).
-- **Reactive** = muscle memory (repetition or trauma).
-- **Wisdom** = later consistency after earlier deliberation.
-
-## Run
+## Quick start
 
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
 ```
+
+## Layers
+
+- **Thought** — short-term ensemble (linear, k-NN, MLP, noise-path linear)
+- **Knowledge** — medium-term, can fade
+- **Reactive** — muscle memory (repetition or trauma)
+- **Wisdom** — later consistency after earlier deliberation
+
+## Benchmarks
+
+```bash
+python benchmarks/comparative.py
+python benchmarks/vs_baselines.py      # vs linear / k-NN / MLP on SKAB
+python benchmarks/skab_compare.py
+```
+
+On the SKAB industrial streams the system is not competitive with simple online baselines. See the architecture note for details.
