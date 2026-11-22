@@ -186,3 +186,43 @@ class RandomnessGate:
         # Also look at residual magnitude if we have it
         weight = float(np.clip(1.0 - 1.5 * deficit, 0.05, 1.0))
         return weight
+
+
+class NoiseProfile:
+    """Learns what chaos looks like from rejected vs accepted points.
+
+    Maintains online estimates of the score distributions of
+    points the gate rejected and points it accepted. The hard
+    threshold is then set so that the rejection region matches
+    the learned chaos distribution.
+    """
+
+    def __init__(self, window: int = 200):
+        self.accepted_scores = []
+        self.rejected_scores = []
+        self.window = window
+
+    def observe_accepted(self, x, score: float):
+        self.accepted_scores.append(score)
+        if len(self.accepted_scores) > self.window:
+            self.accepted_scores.pop(0)
+
+    def observe_rejected(self, x, score: float):
+        self.rejected_scores.append(score)
+        if len(self.rejected_scores) > self.window:
+            self.rejected_scores.pop(0)
+
+    def suggested_threshold(self, current: float) -> float:
+        """Threshold that separates the two learned distributions.
+        Falls back to current if we do not have enough of both.
+        """
+        if len(self.accepted_scores) < 20 or len(self.rejected_scores) < 10:
+            return current
+        a = np.array(self.accepted_scores)
+        r = np.array(self.rejected_scores)
+        # Simple midpoint between 25th percentile of accepted and 75th of rejected
+        a_low = float(np.percentile(a, 25))
+        r_high = float(np.percentile(r, 75))
+        mid = 0.5 * (a_low + r_high)
+        # Stay inside a reasonable band
+        return float(np.clip(mid, 0.25, 0.70))

@@ -3,7 +3,7 @@
 import numpy as np
 from typing import Dict, List, Any, Optional
 from collections import defaultdict
-from .randomness_gate import RandomnessGate
+from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
@@ -311,15 +311,18 @@ class NoiseSeparatedSystem:
             self._record(x, {"kind": "explored_chaos", **context})
             return "explored_chaos"
 
+        score = self.gate.score(x)
         if is_noise:
             self.chaos.reject(x)
             self._record(x, {"kind": "routed_chaos", **context})
-            # Soft path: still learn, but with attenuated weight
-            w = self.gate.residual_weight(x, getattr(self, "_recent_residuals", None))
-            self._soft_observe(x, y, w)
-            return "soft_noise"
+            self.noise_profile.observe_rejected(x, score)
+            # Adapt threshold toward the learned separation
+            self.gate.threshold = self.noise_profile.suggested_threshold(self.gate.threshold)
+            return "chaos"
 
         self.thought.observe(x, y)
+        self.noise_profile.observe_accepted(x, score)
+        self.gate.threshold = self.noise_profile.suggested_threshold(self.gate.threshold)
         if y is not None:
             pred = self.thought.sample(x)
             if pred is not None:
@@ -456,31 +459,6 @@ class NoiseSeparatedSystem:
             self.knowledge.add_or_reinforce(x, y, boost=-0.4, step=self._step)
             self._log("weaken_knowledge")
 
-
-    def _soft_observe(self, x, y, weight: float):
-        """Attenuated update: still trains Thought, but scales the linear step."""
-        # Temporarily scale the linear learning rate
-        linear = None
-        for p in self.thought.mind.perspectives:
-            if p.name == "online_linear":
-                linear = p
-                break
-        old_lr = None
-        if linear is not None and hasattr(linear, "lr"):
-            old_lr = linear.lr
-            linear.lr = old_lr * weight
-        self.thought.observe(x, y)
-        if linear is not None and old_lr is not None:
-            linear.lr = old_lr
-        # Track residual for the profile
-        if y is not None:
-            pred = self.thought.sample(x)
-            if pred is not None:
-                if not hasattr(self, "_recent_residuals"):
-                    self._recent_residuals = []
-                self._recent_residuals.append(abs(float(pred) - float(y)))
-                if len(self._recent_residuals) > 50:
-                    self._recent_residuals.pop(0)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
