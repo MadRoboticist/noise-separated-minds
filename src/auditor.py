@@ -153,12 +153,10 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradiction means an outlier moved the mean. Tighten the cap
-        # so the next outlier moves it less. Recovers slowly.
-        if hasattr(clerk, "outlier_cap"):
-            clerk.outlier_cap = max(0.05, clerk.outlier_cap * 0.9)
-            for item in clerk.knowledge.items:
-                item._outlier_cap = clerk.outlier_cap
+        # Contradiction -> lower the variance gate so unstable components
+        # are distrusted sooner. Recovers when things are stable.
+        if hasattr(clerk, "var_gate"):
+            clerk.var_gate = max(0.2, clerk.var_gate * 0.95)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:

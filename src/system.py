@@ -81,7 +81,7 @@ class NoiseSeparatedSystem:
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
         self.fade_rate = 0.01
-        self.outlier_cap = 3.0  # auditor sets how many stds an observation can move the mean
+        self.var_gate = 2.0  # auditor sets max variance before a component is distrusted
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -681,6 +681,13 @@ class NoiseSeparatedSystem:
                 if item.x.shape == x_arr.shape and np.linalg.norm(item.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
                     until = self._quarantine.get(id(item), 0)
                     if self._step < until:
+                        raw.pop("knowledge", None)
+                    break
+        if "knowledge" in raw and hasattr(self, "var_gate"):
+            x_arr = np.asarray(x, dtype=float).ravel()
+            for item in self.knowledge.items:
+                if hasattr(item, "y_var") and item.x.shape == x_arr.shape and np.linalg.norm(item.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
+                    if item.y_var > self.var_gate:
                         raw.pop("knowledge", None)
                     break
         if "knowledge" in raw:
