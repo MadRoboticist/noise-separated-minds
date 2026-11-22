@@ -109,6 +109,15 @@ class Auditor:
     def apply(self, clerk, finding: AuditFinding):
         if finding is None:
             return
-        # Sever + unlearn all reinforcements, then re-file the good input
+        # Only sever if we have a concrete better observation
+        # (the finding already encodes the contradiction)
         clerk.unlearn(finding.input_key)
+        # Immediately reinforce the current good observation so the correction sticks
+        if hasattr(finding, "correct_y") and finding.correct_y is not None:
+            # pull a representative x from the trace
+            trace = clerk._traces.get(finding.input_key, [])
+            if trace and "x" in trace[-1]:
+                x = trace[-1]["x"]
+                clerk.knowledge.add_or_reinforce(x, finding.correct_y, boost=0.5, step=clerk._step)
+                clerk.reactive.store(x, finding.correct_y)
         clerk.refile_to_thought(finding.input_key)
