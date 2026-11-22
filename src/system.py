@@ -683,13 +683,6 @@ class NoiseSeparatedSystem:
                     if self._step < until:
                         raw.pop("knowledge", None)
                     break
-        if "knowledge" in raw and hasattr(self, "var_gate"):
-            x_arr = np.asarray(x, dtype=float).ravel()
-            for item in self.knowledge.items:
-                if hasattr(item, "y_var") and item.x.shape == x_arr.shape and np.linalg.norm(item.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
-                    if item.y_var > self.var_gate:
-                        raw.pop("knowledge", None)
-                    break
         if "knowledge" in raw:
             pred = raw["knowledge"]
             via = "thought:knowledge"

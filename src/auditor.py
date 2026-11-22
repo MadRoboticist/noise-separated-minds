@@ -153,10 +153,10 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradiction -> lower the variance gate so unstable components
-        # are distrusted sooner. Recovers when things are stable.
-        if hasattr(clerk, "var_gate"):
-            clerk.var_gate = max(0.2, clerk.var_gate * 0.95)
+        # Contradiction -> require more hits before promoting.
+        # Decays back toward the default when findings stop.
+        if hasattr(clerk, "promote_hits"):
+            clerk.promote_hits = min(15, clerk.promote_hits + 1)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
