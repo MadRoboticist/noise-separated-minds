@@ -728,14 +728,14 @@ class NoiseSeparatedSystem:
                 self.graph.set_weight(name, "output", w)
         # Original intent: the graph blends the minds.
         # Prefer a permanence layer when it has a confident match.
-        if "reactive" in raw:
-            pred = raw["reactive"]
-            via = "reactive"
-            self._record(x, {"kind": "predict", "pred": pred, "via": via})
-            return pred, via
         if "wisdom" in raw:
             pred = raw["wisdom"]
             via = "wisdom"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        if "reactive" in raw:
+            pred = raw["reactive"]
+            via = "reactive"
             self._record(x, {"kind": "predict", "pred": pred, "via": via})
             return pred, via
         if "knowledge" in raw:
