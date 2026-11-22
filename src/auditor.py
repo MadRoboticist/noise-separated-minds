@@ -153,10 +153,10 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradictions after a shock mean the negation was too weak.
-        # Strengthen it so the next bad value is pushed away harder.
-        if finding.disconnect_at in ("promoted_wisdom", "to_knowledge", "trauma") and hasattr(clerk, "trauma_negate_strength"):
-            clerk.trauma_negate_strength = min(2.0, clerk.trauma_negate_strength + 0.1)
+        # Contradicted stores absorbed a bad value too easily.
+        # Slow the reinforcement so the next bad value moves the mean less.
+        if finding.disconnect_at in ("promoted_wisdom", "to_knowledge") and hasattr(clerk, "knowledge_boost"):
+            clerk.knowledge_boost = max(0.05, clerk.knowledge_boost * 0.9)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
