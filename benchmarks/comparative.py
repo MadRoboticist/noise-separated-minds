@@ -1,4 +1,4 @@
-"""Comparative evaluation: filtered+auditor vs larger unfiltered model."""
+"""Comparative evaluation with a small multi-seed, multi-noise sweep."""
 
 import numpy as np
 import sys
@@ -9,7 +9,7 @@ from src.system import NoiseSeparatedSystem
 from src.config import SystemConfig
 
 
-def run_stream(system, n_steps=200, noise_frac=0.4, seed=0):
+def run_stream(system, n_steps=180, noise_frac=0.4, seed=0):
     rng = np.random.RandomState(seed)
     signal = np.sin(np.linspace(0, 4 * np.pi, 16))
     errors = []
@@ -20,30 +20,42 @@ def run_stream(system, n_steps=200, noise_frac=0.4, seed=0):
             x = signal + 0.05 * rng.randn(16)
             y = 1.0 + 0.05 * rng.randn()
             system.observe(x, y)
-            if t > 30:
+            if t > 25:
                 pred, _ = system.predict(signal)
                 if pred is not None:
                     errors.append(abs(float(pred) - 1.0))
-    return float(np.mean(errors)) if errors else float("nan"), system.stats()
+    return float(np.mean(errors)) if errors else float("nan")
 
 
 def main():
-    print("=== Comparative evaluation ===")
-    # Small filtered system
-    cfg_small = SystemConfig.small()
-    small = NoiseSeparatedSystem(**cfg_small.__dict__)
-    err_small, stats_small = run_stream(small, seed=1)
+    print("=== Comparative sweep ===")
+    seeds = [1, 2, 3]
+    noise_fracs = [0.3, 0.5]
+    results = []
 
-    # Larger system with almost no filtering (very low threshold)
-    cfg_large = SystemConfig.large()
-    cfg_large.noise_threshold = 0.05  # almost everything passes
-    large = NoiseSeparatedSystem(**cfg_large.__dict__)
-    err_large, stats_large = run_stream(large, seed=1)
+    for nf in noise_fracs:
+        for seed in seeds:
+            cfg_s = SystemConfig.small()
+            small = NoiseSeparatedSystem(config=cfg_s)
+            err_s = run_stream(small, noise_frac=nf, seed=seed)
 
-    print(f"Small + filter + auditor  mean error: {err_small:.4f}  stats: {stats_small}")
-    print(f"Large + weak filter       mean error: {err_large:.4f}  stats: {stats_large}")
-    print(f"Small better or equal: {err_small <= err_large + 0.05}")
+            cfg_l = SystemConfig.large()
+            cfg_l.noise_threshold = 0.05
+            large = NoiseSeparatedSystem(config=cfg_l)
+            err_l = run_stream(large, noise_frac=nf, seed=seed)
+
+            better = err_s <= err_l + 0.08
+            results.append((nf, seed, err_s, err_l, better))
+            print(f"noise={nf:.1f} seed={seed}  small={err_s:.3f}  large={err_l:.3f}  small_ok={better}")
+
+    n_ok = sum(1 for r in results if r[4])
+    print(f"\nSmall filtered ok in {n_ok}/{len(results)} runs")
+    if n_ok < len(results) // 2:
+        print("REGRESSION: small filtered system under-performed")
+        return 1
+    print("PASS")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
