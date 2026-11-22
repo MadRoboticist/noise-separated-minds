@@ -1,6 +1,6 @@
-"""The three minds: reactive (function), analytical (pdf), chaos (YOLO)."""
+"""The three minds: reactive (function), analytical (ensemble of perspectives), chaos (YOLO)."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Callable
 import numpy as np
 
 
@@ -23,67 +23,260 @@ class ReactiveMind:
         return len(self.table)
 
 
-class AnalyticalMind:
-    """Lightweight unsupervised conditional model.
+class Perspective:
+    """Base for a single analytical perspective."""
 
-    Stores vetted (x, y) pairs and answers by locally weighted average
-    (or nearest-neighbor) over similar inputs. Only ever receives
-    non-random observations.
-    """
-
-    def __init__(self, max_obs: int = 2048, bandwidth: float = 0.5):
+    def __init__(self, name: str):
+        self.name = name
+        self.enabled = True
         self.xs: List[np.ndarray] = []
         self.ys: List[Any] = []
-        self.max_obs = max_obs
-        self.bandwidth = bandwidth
 
-    def observe(self, x: np.ndarray, y: Optional[Any] = None):
-        x = np.asarray(x, dtype=float).ravel()
-        self.xs.append(x)
+    def observe(self, x: np.ndarray, y: Any):
+        self.xs.append(np.asarray(x, dtype=float).ravel())
         self.ys.append(y)
-        if len(self.xs) > self.max_obs:
-            # Drop oldest
-            self.xs.pop(0)
-            self.ys.pop(0)
 
-    def _distances(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, dtype=float).ravel()
-        if not self.xs:
-            return np.array([])
-        diffs = [np.linalg.norm(xi - x) for xi in self.xs]
-        return np.asarray(diffs)
-
-    def sample(self, x: np.ndarray, k: int = 5) -> Any:
-        """Return a locally weighted prediction (or None if empty)."""
-        if not self.xs:
-            return None
-        dists = self._distances(x)
-        if len(dists) == 0:
-            return None
-
-        # Soft weights
-        weights = np.exp(-dists ** 2 / (2 * self.bandwidth ** 2))
-        weights /= weights.sum() + 1e-12
-
-        # If outputs are numeric, return weighted mean; else return mode / nearest
-        numeric = all(isinstance(y, (int, float, np.number)) for y in self.ys if y is not None)
-        if numeric:
-            vals = np.array([0.0 if y is None else float(y) for y in self.ys])
-            return float(np.sum(weights * vals))
-
-        # Non-numeric: return the highest-weight observed y
-        idx = int(np.argmax(weights))
-        return self.ys[idx]
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        raise NotImplementedError
 
     def uncertainty(self, x: np.ndarray) -> float:
-        """Crude residual uncertainty: mean distance to neighbors."""
-        dists = self._distances(x)
-        if len(dists) == 0:
+        return 1.0
+
+    def clear(self):
+        self.xs.clear()
+        self.ys.clear()
+
+
+class LocalWeightedPerspective(Perspective):
+    def __init__(self, bandwidth: float = 0.5):
+        super().__init__("local_weighted")
+        self.bandwidth = bandwidth
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if not self.xs:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        weights = np.exp(-dists ** 2 / (2 * self.bandwidth ** 2))
+        weights /= weights.sum() + 1e-12
+        vals = np.array([float(y) if y is not None else 0.0 for y in self.ys])
+        return float(np.sum(weights * vals))
+
+    def uncertainty(self, x: np.ndarray) -> float:
+        if not self.xs:
             return 1.0
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
         return float(np.mean(np.sort(dists)[:5]))
 
+
+class NearestNeighborPerspective(Perspective):
+    def __init__(self, k: int = 1):
+        super().__init__("nearest_neighbor")
+        self.k = k
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if not self.xs:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        idx = np.argsort(dists)[:self.k]
+        vals = [float(self.ys[i]) for i in idx if self.ys[i] is not None]
+        return float(np.mean(vals)) if vals else None
+
+
+class PrototypePerspective(Perspective):
+    def __init__(self, n_prototypes: int = 8):
+        super().__init__("prototype")
+        self.n_prototypes = n_prototypes
+        self.prototypes = None
+        self.proto_ys = None
+
+    def observe(self, x: np.ndarray, y: Any):
+        super().observe(x, y)
+        if len(self.xs) >= self.n_prototypes and len(self.xs) % 10 == 0:
+            self._update_prototypes()
+
+    def _update_prototypes(self):
+        if len(self.xs) < 2:
+            return
+        # Simple k-means-like: random init + few iterations
+        data = np.stack(self.xs)
+        idx = np.random.choice(len(data), min(self.n_prototypes, len(data)), replace=False)
+        cents = data[idx].copy()
+        for _ in range(5):
+            dists = np.linalg.norm(data[:, None] - cents[None, :], axis=2)
+            assign = np.argmin(dists, axis=1)
+            for j in range(len(cents)):
+                mask = assign == j
+                if mask.any():
+                    cents[j] = data[mask].mean(axis=0)
+        self.prototypes = cents
+        # Assign mean y per prototype
+        self.proto_ys = []
+        dists = np.linalg.norm(data[:, None] - cents[None, :], axis=2)
+        assign = np.argmin(dists, axis=1)
+        for j in range(len(cents)):
+            ys = [self.ys[i] for i in range(len(self.ys)) if assign[i] == j and self.ys[i] is not None]
+            self.proto_ys.append(float(np.mean(ys)) if ys else 0.0)
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if self.prototypes is None or not len(self.prototypes):
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.linalg.norm(self.prototypes - x, axis=1)
+        return float(self.proto_ys[np.argmin(dists)])
+
+
+class LinearProjectionPerspective(Perspective):
+    def __init__(self, proj_dim: int = 4):
+        super().__init__("linear_projection")
+        self.proj_dim = proj_dim
+        self.W = None
+        self.coef = None
+
+    def observe(self, x: np.ndarray, y: Any):
+        super().observe(x, y)
+        if len(self.xs) >= 8 and len(self.xs) % 5 == 0:
+            self._fit()
+
+    def _fit(self):
+        X = np.stack(self.xs)
+        y = np.array([float(yi) if yi is not None else 0.0 for yi in self.ys])
+        if self.W is None or self.W.shape[0] != X.shape[1]:
+            rng = np.random.RandomState(0)
+            self.W = rng.randn(X.shape[1], self.proj_dim) / np.sqrt(X.shape[1])
+        Z = X @ self.W
+        Z = np.c_[Z, np.ones(len(Z))]
+        try:
+            self.coef = np.linalg.lstsq(Z, y, rcond=None)[0]
+        except Exception:
+            self.coef = None
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if self.coef is None or self.W is None:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        z = np.append(x @ self.W, 1.0)
+        return float(z @ self.coef)
+
+
+class MedianNeighborPerspective(Perspective):
+    def __init__(self, k: int = 5):
+        super().__init__("median_neighbor")
+        self.k = k
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if not self.xs:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        idx = np.argsort(dists)[:self.k]
+        vals = [float(self.ys[i]) for i in idx if self.ys[i] is not None]
+        return float(np.median(vals)) if vals else None
+
+
+class ExponentialDecayPerspective(Perspective):
+    def __init__(self, decay: float = 0.9):
+        super().__init__("exp_decay")
+        self.decay = decay
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if not self.xs:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        ages = np.arange(len(self.xs))[::-1]  # newer = higher weight
+        weights = (self.decay ** ages) * np.exp(-dists)
+        weights /= weights.sum() + 1e-12
+        vals = np.array([float(y) if y is not None else 0.0 for y in self.ys])
+        return float(np.sum(weights * vals))
+
+
+class ConstantMeanPerspective(Perspective):
+    def __init__(self):
+        super().__init__("constant_mean")
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        vals = [float(y) for y in self.ys if y is not None]
+        return float(np.mean(vals)) if vals else None
+
+
+class AnalyticalMind:
+    """Ensemble of 7 small perspectives on the same filtered stream.
+
+    Perspectives can be enabled/disabled. A blender combines their outputs.
+    """
+
+    def __init__(self):
+        self.perspectives: List[Perspective] = [
+            LocalWeightedPerspective(),
+            NearestNeighborPerspective(k=1),
+            NearestNeighborPerspective(k=3),
+            PrototypePerspective(n_prototypes=6),
+            LinearProjectionPerspective(proj_dim=4),
+            MedianNeighborPerspective(k=5),
+            ExponentialDecayPerspective(decay=0.85),
+        ]
+        # 7th is ConstantMean as fallback; we already have 7 above. Adjust if needed.
+        # Actually list has 7. Constant can replace one if desired.
+        self.blender_mode = "weighted"  # "weighted", "greedy", "mean"
+
+    def set_enabled(self, names: List[str]):
+        """Enable only the named perspectives."""
+        for p in self.perspectives:
+            p.enabled = p.name in names or any(p.name.startswith(n) for n in names)
+
+    def enable_all(self):
+        for p in self.perspectives:
+            p.enabled = True
+
+    def observe(self, x: np.ndarray, y: Optional[Any] = None):
+        for p in self.perspectives:
+            if p.enabled:
+                p.observe(x, y)
+
+    def _active(self) -> List[Perspective]:
+        return [p for p in self.perspectives if p.enabled]
+
+    def sample(self, x: np.ndarray) -> Optional[float]:
+        active = self._active()
+        if not active:
+            return None
+        preds = []
+        uncs = []
+        for p in active:
+            pred = p.predict(x)
+            if pred is not None:
+                preds.append(pred)
+                uncs.append(p.uncertainty(x))
+        if not preds:
+            return None
+        preds = np.array(preds)
+        uncs = np.array(uncs)
+
+        if self.blender_mode == "greedy":
+            return float(preds[np.argmin(uncs)])
+        if self.blender_mode == "mean":
+            return float(np.mean(preds))
+        # weighted by inverse uncertainty
+        weights = 1.0 / (uncs + 1e-6)
+        weights /= weights.sum()
+        return float(np.sum(weights * preds))
+
+    def uncertainty(self, x: np.ndarray) -> float:
+        active = self._active()
+        if not active:
+            return 1.0
+        uncs = [p.uncertainty(x) for p in active]
+        return float(np.mean(uncs))
+
     def __len__(self):
-        return len(self.xs)
+        return len(self.perspectives[0].xs) if self.perspectives else 0
+
+    @property
+    def names(self):
+        return [p.name for p in self.perspectives]
 
 
 class ChaosPile:
