@@ -1,4 +1,4 @@
-"""Top-level system with full feedback: promotion, demotion, chaos re-entry, exploratory routing."""
+"""Top-level system with full feedback including Wisdom checks."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -37,15 +37,21 @@ class NoiseSeparatedSystem:
         self._step = 0
 
     def observe(self, x: np.ndarray, y=None):
-        """Ingest with exploratory routing and full promotion path."""
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
 
-        # Occasional exploratory send to chaos even if structured
+        # Check existing Wisdom against this observation
+        if y is not None:
+            passed = self.wisdom.check(x, y, tol=self.demote_error_tol)
+            if not passed:
+                # Wisdom failed: force re-examination in Thought, weaken related knowledge
+                self.thought.observe(x, y)
+                self.knowledge.add_or_reinforce(x, y, boost=-0.3)
+                # Do not return early; continue normal processing
+
         if score >= self.noise_threshold and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
-            # Still allow a copy into thought for comparison
             self.thought.observe(x, y)
             return "explored_chaos"
 
@@ -53,17 +59,14 @@ class NoiseSeparatedSystem:
             self.chaos.reject(x)
             return "chaos"
 
-        # Normal path: Thought
         self.thought.observe(x, y)
         self.short_term.add(x, score, y)
 
-        # Promotion check
         existing = self.short_term.find_similar(x)
         if existing is not None and existing["hits"] >= self.promote_hits and score >= self.promote_score:
             stored_y = y if y is not None else existing.get("output")
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost)
 
-            # Wisdom if strong enough
             for item in self.knowledge.strongest(5):
                 if np.allclose(item.x, np.asarray(x).ravel(), atol=0.15) and item.strength >= self.wisdom_strength:
                     self.wisdom.add(x, stored_y, confidence=item.strength)
@@ -71,7 +74,6 @@ class NoiseSeparatedSystem:
                     return "promoted_wisdom"
             return "promoted_knowledge"
 
-        # Periodic maintenance
         if self._step % 8 == 0:
             self.knowledge.fade()
             self._try_chaos_reentry()
@@ -80,38 +82,29 @@ class NoiseSeparatedSystem:
         return "thought"
 
     def _try_chaos_reentry(self):
-        """If a previously rejected item now looks structured, pull it into Thought."""
         if not self.chaos.rejected:
             return
-        # Sample a few recent rejects
         candidates = self.chaos.rejected[-5:]
         for cx in candidates:
             if self.gate.score(cx) >= self.noise_threshold + 0.1:
-                # Re-enter as thought
                 self.thought.observe(cx, y=None)
-                # Remove from chaos (simple: just mark by not re-adding; full removal optional)
-                return "chaos_reentry"
+                return
 
     def _check_demotions(self, x, y):
-        """Demote reactive/knowledge when prediction error is high."""
         if y is None:
             return
-        # Check reactive
         r = self.reactive.lookup(x)
         if r is not None and abs(float(r) - float(y)) > self.demote_error_tol:
-            # Demote: remove from reactive, weaken knowledge
             key = self.reactive._key(x)
             if key in self.reactive.table:
                 del self.reactive.table[key]
-            self.knowledge.add_or_reinforce(x, y, boost=-0.5)  # weaken
-            self.thought.observe(x, y)  # force back into figuring
-            return "demoted_reactive"
+            self.knowledge.add_or_reinforce(x, y, boost=-0.5)
+            self.thought.observe(x, y)
+            return
 
-        # Check knowledge
         k = self.knowledge.lookup(x)
         if k is not None and abs(float(k) - float(y)) > self.demote_error_tol:
             self.knowledge.add_or_reinforce(x, y, boost=-0.4)
-            return "demoted_knowledge"
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
@@ -139,6 +132,7 @@ class NoiseSeparatedSystem:
             "thought": len(self.thought),
             "knowledge": len(self.knowledge),
             "wisdom": len(self.wisdom),
+            "wisdom_active": self.wisdom.active_count,
             "reactive": len(self.reactive),
             "chaos": len(self.chaos),
             "short_term": len(self.short_term.buffer),
