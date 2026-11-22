@@ -581,9 +581,8 @@ class NoiseSeparatedSystem:
         thought_pred = self.thought.sample(x)
         if thought_pred is not None:
             raw["thought"] = float(thought_pred)
-        # Chaos contributes only if the gate says this point is noise
-        if self.gate.score(x) < self.gate.threshold:
-            raw["chaos"] = 0.0  # no structured prediction
+        # Chaos only votes if it has a real stored pattern near this input.
+        # A placeholder zero was diluting every prediction.
         # Auditor node: if recent findings exist, it signals the clerk
         if self.auditor.findings:
             raw["auditor"] = 1.0  # presence of a finding
