@@ -604,27 +604,24 @@ class NoiseSeparatedSystem:
 
         # Exploration decays so we stop injecting noise once identified
         # LQR disabled: identification was real but the steps increased error
-        explore_amp = 0.004 * np.exp(-self._step / 300.0)
-        use_lqr = self.edge_lqr.confident()
+        explore_amp = 0.0
+        use_lqr = False
         dw = {k: 0.0 for k in ctrl}
 
         # Excite one control per step so the effect is identifiable
         names = self.edge_lqr.names
         excite_key = names[self._excite_idx % len(names)]
         self._excite_idx += 1
-        for key, delta in dw.items():
-            if "->" not in key:
-                continue
-            src, dst = key.split("->")
-            w = self.graph.weight(src, dst)
-            explore = explore_amp if key == excite_key else 0.0
-            d = (0.5 * delta if use_lqr else 0.0) + explore
-            if abs(d) > 1e-6:
-                self.graph.set_weight_raw(src, dst, max(0.0, min(1.0, w + d)))
+        # Direct residual gradient on output edges.
+        # Lower error -> strengthen the edges that were used; higher -> weaken.
+        for src in ("thought", "knowledge", "reactive", "wisdom"):
+            w = self.graph.weight(src, "output")
+            if w > 0.01 or src == "thought":
+                delta = step * 0.5
+                self.graph.set_weight_raw(src, "output", max(0.0, min(1.0, w + delta)))
         self.graph.normalize()
-        # Scalar excitation
-        if excite_key == "fb_gain":
-            self.fb_gain = float(np.clip(self.fb_gain + explore_amp, 0.0, 1.0))
+        # Feedback gain: raise it when residual is small, lower when large
+        self.fb_gain = float(np.clip(self.fb_gain + 0.3 * step, 0.0, 0.5))
 
         # Scalar controls
         self.fb_gain = float(np.clip(self.fb_gain + 0.5 * dw.get("fb_gain", 0.0), 0.0, 1.0))
