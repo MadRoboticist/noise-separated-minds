@@ -63,7 +63,10 @@ class NoiseSeparatedSystem:
         self._early_disagreement: Dict[str, int] = defaultdict(int)
 
     def _trace_key(self, x: np.ndarray) -> str:
-        return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
+        return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
+
+    def _coarse_key(self, x: np.ndarray) -> str:
+        return str(np.round(np.asarray(x).ravel()[:4], 1).tolist())
 
     def _log(self, kind: str, **kwargs):
         entry = {"step": self._step, "kind": kind, **kwargs}
@@ -266,7 +269,7 @@ class NoiseSeparatedSystem:
 
         # Record early disagreement for later wisdom eligibility
         if agreement < 0.55:
-            self._early_disagreement[self._trace_key(x)] += 1
+            self._early_disagreement[self._coarse_key(x)] += 1
 
         if y is not None and len(self.thought) > 3:
             unc = self.calibrated_uncertainty(self.thought.uncertainty(x))
@@ -315,13 +318,13 @@ class NoiseSeparatedSystem:
 
         # --- Muscle memory (Reactive): pure repetition OR trauma ---
         if existing is not None and y is not None:
-            high_repetition = existing["hits"] >= hits_needed + 1 and score >= self.promote_score
+            high_repetition = existing["hits"] >= max(2, hits_needed - 1) and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
             if high_repetition or trauma:
                 self.reactive.store(x, y)
                 self._record(x, {"kind": "muscle_memory", "via": "trauma" if trauma else "repetition", **context})
                 # Pure muscle memory does not become Wisdom
-                if high_repetition and self._early_disagreement[key] < 2:
+                if high_repetition and self._early_disagreement[self._coarse_key(x)] < 2:
                     return "muscle_memory"
 
         # --- Knowledge (still the medium-term store) ---
@@ -338,7 +341,7 @@ class NoiseSeparatedSystem:
             self._record(x, {"kind": "promoted_knowledge", "y": stored_y, **context})
 
             # --- Wisdom: only if it required earlier deliberation and is now consistent ---
-            had_deliberation = self._early_disagreement[key] >= 2
+            had_deliberation = self._early_disagreement[self._coarse_key(x)] >= 2
             now_consistent = agreement >= self.min_agreement and age_ok
             if had_deliberation and now_consistent:
                 item = self.knowledge.find_item(x)
