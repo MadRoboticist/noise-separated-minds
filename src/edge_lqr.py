@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 
 class EdgeLQR:
-    def __init__(self, edge_names: List[str], horizon: int = 40, effort: float = 0.5):
+    def __init__(self, edge_names: List[str], horizon: int = 8, effort: float = 0.5):
         self.names = list(edge_names)
         self.n = len(self.names)
         self.horizon = horizon

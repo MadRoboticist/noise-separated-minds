@@ -29,8 +29,9 @@ class NoiseSeparatedSystem:
         self.reactive = ReactiveMind()
         self.trauma = TraumaStore()
         self.feedback = FeedbackLinear()
-        self.next_input = NextInputLinear()
+        self.next_input = None  # allocated on first use if enabled
         self._prev_x = None
+        self._enable_next_input = False
         self.graph_mode = 'blend'
         self.graph = MindGraph()
         self.edge_lqr = EdgeLQR([
@@ -255,7 +256,9 @@ class NoiseSeparatedSystem:
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
-        if self._prev_x is not None:
+        if self._enable_next_input and self._prev_x is not None:
+            if self.next_input is None:
+                self.next_input = NextInputLinear()
             self.next_input.observe(self._prev_x, x)
             if self.next_input.last_error is not None:
                 self._input_err_window.append(self.next_input.last_error)
