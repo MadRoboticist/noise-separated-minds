@@ -57,7 +57,12 @@ class Auditor:
         if not any(c >= 2 for c in y_counts.values()):
             return None
 
-        for event in reversed(trace):
+        # Only look at recent events so ordinary drift is not treated as contradiction
+        recent = [e for e in trace if clerk._step - e.get("step", 0) < 30]
+        if not recent:
+            recent = trace[-5:]
+
+        for event in reversed(recent):
             kind = event.get("kind")
 
             if kind == "routed_chaos":
