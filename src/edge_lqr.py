@@ -47,6 +47,17 @@ class EdgeLQR:
         A = X.T @ X + 0.1 * np.eye(self.n)
         self.b = np.linalg.solve(A, X.T @ y)
 
+    def reset(self):
+        """Drop the identified model. Used when error is rising."""
+        self._hist_dw.clear()
+        self._hist_de.clear()
+        self.b = np.zeros(self.n)
+        self._last_w = None
+        self._last_err = None
+
+    def confident(self) -> bool:
+        return len(self._hist_dw) >= 15 and np.linalg.norm(self.b) > 1e-4
+
     def step(self, weights: Dict[str, float], error: float) -> Dict[str, float]:
         """Return optimal edge deltas.
         Cost ≈ (error + b·dw)^2 + effort·||dw||^2

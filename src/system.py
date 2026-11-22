@@ -590,15 +590,26 @@ class NoiseSeparatedSystem:
         ctrl["lr_linear"] = getattr(self.thought.mind, "lr", 0.05) if hasattr(self.thought, "mind") else 0.05
         ctrl["lr_feedback"] = self.feedback.lr
         ctrl["lr_next"] = self.next_input.lr
-        # Apply LQR step with raw sets, then normalize once
-        dw = self.edge_lqr.step(ctrl, err)
+        # Reset the model if recent error is rising (escape a bad fit)
+        if len(self._err_window) >= 20:
+            recent = np.mean(self._err_window[-10:])
+            older = np.mean(self._err_window[-20:-10])
+            if older > 0 and recent > 1.3 * older:
+                self.edge_lqr.reset()
+                self._log("lqr_reset")
+
+        # Exploration decays so we stop injecting noise once identified
+        explore_amp = 0.008 * np.exp(-self._step / 200.0)
+        use_lqr = self.edge_lqr.confident()
+        dw = self.edge_lqr.step(ctrl, err) if use_lqr else {k: 0.0 for k in ctrl}
+
         for key, delta in dw.items():
             if "->" not in key:
                 continue
             src, dst = key.split("->")
             w = self.graph.weight(src, dst)
-            explore = 0.005 * np.sin(0.3 * self._step + (hash(key) % 5))
-            d = 0.5 * delta + explore
+            explore = explore_amp * np.sin(0.3 * self._step + (hash(key) % 5))
+            d = (0.5 * delta if use_lqr else 0.0) + explore
             if abs(d) > 1e-6:
                 self.graph.set_weight_raw(src, dst, max(0.0, min(1.0, w + d)))
         self.graph.normalize()
