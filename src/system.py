@@ -723,7 +723,7 @@ class NoiseSeparatedSystem:
         if "thought" in votes and len(votes) > 1:
             # Only blend if other votes are close to thought; else use thought
             others = [v for k, v in votes.items() if k != "thought"]
-            if others and np.mean([abs(v - votes["thought"]) for v in others]) > 0.3:
+            if others and np.mean([abs(v - votes["thought"]) for v in others]) > 0.05:
                 pred = votes["thought"]
                 via = "thought"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
