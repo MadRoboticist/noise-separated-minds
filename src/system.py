@@ -62,6 +62,7 @@ class NoiseSeparatedSystem:
         self._chaos_promotions = 0
         self._recent_agreements = []
         self._traces: Dict[str, List[Dict[str, Any]]] = {}
+        self._quarantine = {}
         self._recent_good: List[np.ndarray] = []
         self.event_log: List[Dict[str, Any]] = []
         self._calib: List[tuple] = []
@@ -79,7 +80,8 @@ class NoiseSeparatedSystem:
         self.wisdom_use_n = 180
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
-        self.fade_rate = 0.01  # auditor raises on contradiction, lowers when stable
+        self.fade_rate = 0.01
+        self.quarantine_steps = 5  # auditor sets how long a contradicted entry is distrusted
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -672,6 +674,15 @@ class NoiseSeparatedSystem:
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
                 return pred, via
             # else fall through to knowledge
+        # Skip knowledge if its best match is quarantined
+        if "knowledge" in raw and hasattr(self, "_quarantine"):
+            x_arr = np.asarray(x, dtype=float).ravel()
+            for item in self.knowledge.items:
+                if item.x.shape == x_arr.shape and np.linalg.norm(item.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
+                    until = self._quarantine.get(id(item), 0)
+                    if self._step < until:
+                        raw.pop("knowledge", None)
+                    break
         if "knowledge" in raw:
             pred = raw["knowledge"]
             via = "thought:knowledge"
