@@ -1,90 +1,88 @@
 """Procedural auditor.
 
-Works only with the file clerk. Given a suspect input it recalls the
-recorded trace and walks backward until it finds the disconnect, then
-asks the clerk to re-file.
+Purpose: disconnect irrational behavior from good (structured) inputs.
+Works only with the file clerk. Walks the trace of a good input backward
+until it finds where the system acted irrationally, then severs that
+behavior so the input can be re-filed cleanly.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import numpy as np
 
 
 class AuditFinding:
     def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str):
         self.input_key = input_key
-        self.disconnect_at = disconnect_at  # e.g. "gate", "promotion", "wisdom", "reactive"
+        self.disconnect_at = disconnect_at
         self.detail = detail
         self.action = action
 
 
 class Auditor:
-    """Purely procedural. Never touches minds directly."""
-
     def __init__(self):
         self.findings: List[AuditFinding] = []
 
     def audit_input(self, clerk, x: np.ndarray, observed_y: Optional[float] = None) -> Optional[AuditFinding]:
-        """Recall the trace for this input and walk backward to the disconnect."""
+        """Only act when the input itself looks structured (good)."""
+        score = clerk.gate.score(x)
+        if score < clerk.gate.threshold:
+            return None  # not a good input; leave it alone
+
         key = clerk._trace_key(x)
         trace = clerk.get_trace(key)
         if not trace:
             return None
 
-        # Walk from most recent event backward
+        # Walk backward looking for irrational acts on this good input
         for event in reversed(trace):
             kind = event.get("kind")
-            if kind == "predict":
-                pred = event.get("pred")
-                if observed_y is not None and pred is not None:
-                    if abs(float(pred) - float(observed_y)) > clerk.demote_error_tol:
-                        finding = AuditFinding(
-                            key, "prediction",
-                            f"Prediction {pred} disagreed with {observed_y}",
-                            "demote_and_rethink"
-                        )
-                        self.findings.append(finding)
-                        return finding
-            elif kind == "promoted_wisdom":
-                if observed_y is not None and abs(float(event.get("y", 0)) - float(observed_y)) > clerk.demote_error_tol:
-                    finding = AuditFinding(
-                        key, "wisdom_promotion",
-                        "Wisdom was promoted with a value that later failed",
-                        "reduce_wisdom_confidence"
-                    )
-                    self.findings.append(finding)
-                    return finding
-            elif kind == "promoted_knowledge":
-                if observed_y is not None and abs(float(event.get("y", 0)) - float(observed_y)) > clerk.demote_error_tol:
-                    finding = AuditFinding(
-                        key, "knowledge_promotion",
-                        "Knowledge promotion later contradicted",
-                        "weaken_knowledge"
-                    )
-                    self.findings.append(finding)
-                    return finding
-            elif kind == "routed_chaos" and observed_y is not None:
-                # Structured observation was sent to chaos
+
+            # Irrational: good input was sent to chaos
+            if kind == "routed_chaos":
                 finding = AuditFinding(
                     key, "gate",
-                    "Input with a label was routed to chaos",
-                    "force_to_thought"
+                    "Structured input was routed to chaos",
+                    "sever_chaos_and_refile"
                 )
                 self.findings.append(finding)
                 return finding
 
+            # Irrational: prediction on a good input was wildly wrong
+            if kind == "predict" and observed_y is not None:
+                pred = event.get("pred")
+                if pred is not None and abs(float(pred) - float(observed_y)) > clerk.demote_error_tol * 1.5:
+                    finding = AuditFinding(
+                        key, "prediction",
+                        f"Irrational prediction {pred} on structured input (true {observed_y})",
+                        "sever_prediction_path"
+                    )
+                    self.findings.append(finding)
+                    return finding
+
+            # Irrational: promoted a value that later contradicted the good observation
+            if kind in ("promoted_wisdom", "promoted_knowledge") and observed_y is not None:
+                promoted = event.get("y")
+                if promoted is not None and abs(float(promoted) - float(observed_y)) > clerk.demote_error_tol:
+                    finding = AuditFinding(
+                        key, kind,
+                        "Promotion contradicted later good observation",
+                        "sever_promotion"
+                    )
+                    self.findings.append(finding)
+                    return finding
+
         return None
 
     def apply(self, clerk, finding: AuditFinding):
-        """Ask the file clerk to re-file according to the finding."""
         if finding is None:
             return
-        action = finding.action
-        # The clerk exposes only re-file methods; auditor never touches layers directly
-        if action == "demote_and_rethink":
+        # All actions sever the bad behavior and force the good input back to Thought
+        if finding.action == "sever_chaos_and_refile":
+            clerk.refile_to_thought(finding.input_key)
+        elif finding.action == "sever_prediction_path":
             clerk.refile_demote(finding.input_key)
-        elif action == "reduce_wisdom_confidence":
-            clerk.refile_weaken_wisdom(finding.input_key)
-        elif action == "weaken_knowledge":
+            clerk.refile_to_thought(finding.input_key)
+        elif finding.action == "sever_promotion":
             clerk.refile_weaken_knowledge(finding.input_key)
-        elif action == "force_to_thought":
+            clerk.refile_weaken_wisdom(finding.input_key)
             clerk.refile_to_thought(finding.input_key)
