@@ -85,6 +85,9 @@ class RandomnessGate:
         x = np.asarray(x, dtype=float).ravel()
         if len(x) == 0:
             return 0.0
+        # Spectral tests are unreliable below ~16 samples; use local consistency instead
+        if len(x) < 16:
+            return self._short_score(x)
         noise_scores = np.array([
             spectral_flatness(x),
             histogram_entropy(x),
@@ -95,6 +98,28 @@ class RandomnessGate:
         noise = float(np.dot(self.weights, noise_scores))
         return float(np.clip(1.0 - noise, 0.0, 1.0))
 
+    def _short_score(self, x: np.ndarray) -> float:
+        """Score short vectors by how consistent they are with recent accepted inputs."""
+        if not hasattr(self, "_recent_accepted"):
+            self._recent_accepted = []
+        if len(self._recent_accepted) < 5:
+            self._recent_accepted.append(x.copy())
+            if len(self._recent_accepted) > 40:
+                self._recent_accepted.pop(0)
+            return 0.55
+        recent = np.array(self._recent_accepted[-20:])
+        med = np.median(recent, axis=0)
+        mad = np.median(np.abs(recent - med), axis=0) + 1e-6
+        z = np.abs(x - med) / mad
+        # high z => outlier relative to recent normal
+        outlier_frac = float(np.mean(z > 3.0))
+        s = float(np.clip(1.0 - outlier_frac, 0.0, 1.0))
+        if s >= 0.4:
+            self._recent_accepted.append(x.copy())
+            if len(self._recent_accepted) > 40:
+                self._recent_accepted.pop(0)
+        return s
+
     def update(self, structure_score: float, was_rejected: bool):
         """Adapt threshold toward the lower tail of recent scores."""
         self.recent_scores.append(structure_score)
@@ -104,6 +129,11 @@ class RandomnessGate:
             self.rejected_count += 1
         else:
             self.accepted_count += 1
+            if not hasattr(self, "_recent_accepted"):
+                self._recent_accepted = []
+            # only store if we have the raw x; caller will pass via score path
+            # we store in score() for short vectors
+            
 
         if len(self.recent_scores) >= 20:
             # Set threshold near the 25th percentile of recent scores,
