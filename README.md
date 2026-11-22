@@ -8,7 +8,11 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Surgical unlearn with detailed export.
+Surgical unlearn. Recurrence counter tracks how many times the same key has been unlearned (`stats()["recurrent_unlearns"]`).
+
+## Generative blender
+
+Confirmed hypotheses raise a bonus weight on GMM and latent-residual perspectives inside the ensemble blender. The bonus slowly decays.
 
 ## Calibration
 
@@ -16,7 +20,7 @@ Thought temperature scaling + Wisdom confidence reliability.
 
 ## Chaos probing
 
-Prefers rejects that are both close to the current threshold **and** similar to recent good (structured) inputs.
+Threshold proximity + similarity to recent good inputs.
 
 ## Comparative evaluation
 
@@ -24,12 +28,9 @@ Prefers rejects that are both close to the current threshold **and** similar to 
 python benchmarks/comparative.py
 ```
 
-Multi-seed, multi-noise sweep with pass/fail.
-
 ## Run
 
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
-python benchmarks/comparative.py
 ```
