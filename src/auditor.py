@@ -153,14 +153,11 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Two-sided: false rejection (structured input sent to chaos) means
-        # the gate is too aggressive -> lower the threshold.
-        # A contradicted store means noise got through -> raise it.
-        if hasattr(clerk, "gate"):
-            if finding.disconnect_at == "gate":
-                clerk.gate.threshold = max(0.05, clerk.gate.threshold - 0.01)
-            elif finding.disconnect_at in ("promoted_wisdom", "to_knowledge"):
-                clerk.gate.threshold = min(0.9, clerk.gate.threshold + 0.01)
+        # Contradiction -> smaller steps (resist the bad value next time).
+        if hasattr(clerk, "store_step"):
+            clerk.store_step = max(0.2, clerk.store_step * 0.95)
+            for item in clerk.knowledge.items:
+                item._step_scale = clerk.store_step
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
