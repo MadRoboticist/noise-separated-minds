@@ -721,11 +721,10 @@ class NoiseSeparatedSystem:
                 self.graph.set_weight(name, "output", w)
         # Thought is the strongest single predictor on these streams.
         # Blend only when every other vote is within 0.02 of thought.
-        if "thought" in votes:
-            others = [v for k, v in votes.items() if k != "thought"]
-            if not others or np.mean([abs(v - votes["thought"]) for v in others]) > 0.02:
-                pred = votes["thought"]
-                via = "thought"
+        if "thought" in raw:
+            # Use the raw thought prediction, not the mix-contaminated vote
+            pred = raw["thought"]
+            via = "thought"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
                 return pred, via
         pred = self.graph.compute_output(votes)
