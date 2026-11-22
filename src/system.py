@@ -1,4 +1,4 @@
-"""File clerk. Generative bonus on confirmed hypotheses + unlearn recurrence counter."""
+"""File clerk. Audit trail records before/after; chaos similarity is recency-weighted."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -58,7 +58,7 @@ class NoiseSeparatedSystem:
         self.temperature = 1.0
         self._wisdom_rel: List[tuple] = []
         self._unlearn_details: List[Dict[str, Any]] = []
-        self._unlearn_counts: Dict[str, int] = defaultdict(int)  # recurrence
+        self._unlearn_counts: Dict[str, int] = defaultdict(int)
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -89,17 +89,19 @@ class NoiseSeparatedSystem:
             dropped_reactive.append(str(k)[:40])
             self.reactive.table.pop(k, None)
 
-        weakened_k = 0
+        knowledge_before_after = []
         for item in self.knowledge.items:
             if self._trace_key(item.x) == key:
+                before = item.strength
                 item.strength *= 0.3
-                weakened_k += 1
+                knowledge_before_after.append((round(before, 3), round(item.strength, 3)))
 
-        weakened_w = 0
+        wisdom_before_after = []
         for e in self.wisdom.entries:
             if self._trace_key(e.x) == key:
+                before = e.confidence
                 e.confidence = max(0.0, e.confidence - 0.6)
-                weakened_w += 1
+                wisdom_before_after.append((round(before, 3), round(e.confidence, 3)))
 
         deactivated_h = 0
         for h in self.hypotheses.hypotheses:
@@ -118,8 +120,8 @@ class NoiseSeparatedSystem:
             "key": key,
             "times": self._unlearn_counts[key],
             "dropped_reactive": dropped_reactive,
-            "weakened_knowledge": weakened_k,
-            "weakened_wisdom": weakened_w,
+            "knowledge_before_after": knowledge_before_after,
+            "wisdom_before_after": wisdom_before_after,
             "deactivated_hypotheses": deactivated_h,
         }
         self._unlearn_details.append(detail)
@@ -179,11 +181,11 @@ class NoiseSeparatedSystem:
             f.write("\n## Surgical unlearns\n")
             for d in self._unlearn_details[-30:]:
                 f.write(
-                    f"step {d['step']} key={d['key']} times={d.get('times', 1)} "
-                    f"reactive_dropped={len(d['dropped_reactive'])} "
-                    f"knowledge_weakened={d['weakened_knowledge']} "
-                    f"wisdom_weakened={d['weakened_wisdom']} "
-                    f"hypotheses_deactivated={d['deactivated_hypotheses']}\n"
+                    f"step {d['step']} key={d['key']} times={d.get('times', 1)}\n"
+                    f"  reactive_dropped={len(d['dropped_reactive'])}\n"
+                    f"  knowledge before->after: {d.get('knowledge_before_after', [])}\n"
+                    f"  wisdom before->after: {d.get('wisdom_before_after', [])}\n"
+                    f"  hypotheses_deactivated={d['deactivated_hypotheses']}\n"
                 )
 
     def save(self, path: str):
@@ -224,7 +226,6 @@ class NoiseSeparatedSystem:
         active_names = self.thought.mind.active_names
         self.hypotheses.observe(x, y, self._step)
 
-        # Boost generative blender weight when a hypothesis is confirmed
         if y is not None:
             for h in self.hypotheses.hypotheses:
                 if h.active and h.confirmations >= 1 and self._trace_key(h.x) == self._trace_key(x):
@@ -334,11 +335,21 @@ class NoiseSeparatedSystem:
         return "thought"
 
     def _similarity_to_good(self, x: np.ndarray) -> float:
+        """Recency-weighted similarity (newer good inputs count more)."""
         if not self._recent_good:
             return 0.0
         x = np.asarray(x).ravel()
-        dists = [np.linalg.norm(g.ravel() - x) for g in self._recent_good[-8:]]
-        return float(1.0 / (1.0 + min(dists)))
+        goods = self._recent_good[-12:]
+        n = len(goods)
+        weighted = 0.0
+        wsum = 0.0
+        for i, g in enumerate(goods):
+            recency = (i + 1) / n  # newer = higher
+            dist = np.linalg.norm(g.ravel() - x)
+            sim = 1.0 / (1.0 + dist)
+            weighted += recency * sim
+            wsum += recency
+        return float(weighted / (wsum + 1e-12))
 
     def _active_chaos_probe(self) -> bool:
         if not self.chaos.rejected:
@@ -348,7 +359,7 @@ class NoiseSeparatedSystem:
             s = self.gate.score(cx)
             thr_dist = abs(s - self.gate.threshold)
             sim = self._similarity_to_good(cx)
-            priority = thr_dist - 0.4 * sim
+            priority = thr_dist - 0.5 * sim
             scored.append((priority, cx, s, sim))
         scored.sort(key=lambda t: t[0])
         for _, cx, s, sim in scored[:5]:
