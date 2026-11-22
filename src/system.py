@@ -577,8 +577,9 @@ class NoiseSeparatedSystem:
         for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
             w = self.graph.weight(src, "output")
             delta = lqr_dw.get(src, 0.0)
-            # blend with the residual-scaled nudge so cold start still moves
-            delta = 0.7 * delta + 0.3 * step * w
+            # exploration so the LQR can observe a response
+            explore = 0.01 * np.sin(self._step + hash(src) % 7)
+            delta = 0.6 * delta + 0.2 * step * (w - 0.15) + explore
             if abs(delta) > 1e-6:
                 self.graph.set_weight(src, "output", max(0.0, min(1.0, w + delta)))
 
