@@ -1,30 +1,30 @@
 # Noise-Separated Minds
 
-Unsupervised architecture that separates pure randomness (chaos) from structured uncertainty (analytical pdf) and deterministic mappings (reactive function).
+Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales: Thought, Knowledge, and Wisdom.
 
 ## Core Idea
 
-1. **Randomness Gate**: Detect and reject pure noise before it can skew any distribution.
-2. **Short-term elastic buffer**: Fast, overwritable memory for provisional patterns.
-3. **Consolidation clerk**: Promote only vetted, repeatable structure.
-4. **Long-term stores**:
-   - Reactive: near-zero-variance deterministic functions
-   - Analytical: ensemble of small perspectives on the filtered stream
-   - Chaos: residual pure randomness (no model)
+1. **Randomness Gate**: Reject pure noise before it can skew any distribution.
+2. **Thought**: Short-term figuring (analytical ensemble). Can be lost.
+3. **Knowledge**: Medium-term patterns. Can fade with disuse.
+4. **Wisdom**: Long-term invariants. Only grows.
+5. **Reactive**: Deterministic functions promoted from strong knowledge/wisdom.
+6. **Chaos**: Residual pure randomness (no model).
 
 ## Why
 
-Pure randomness cannot be accounted for inside a pdf without dragging coefficients and skewing the distribution away from truth. Filter it first (as in analog signal chains), then model only the remaining signal. This also reduces the required model capacity.
+Pure randomness cannot be absorbed into a pdf without skewing it. Filter first. Then let thoughts be disposable, knowledge provisional, and wisdom cumulative.
 
 ## Current Implementation
 
-- Randomness gate (spectral flatness + entropy)
-- Short-term buffer with hit counting
-- Reactive mind: exact-match deterministic table
-- Analytical mind: 7 toggleable perspectives (local weighted, nn_k1, nn_k3, prototype, linear projection, median neighbor, exp decay) with weighted / greedy / mean blender
-- Chaos pile: rejection + pure noise sampler
-- Promotion of high-consistency patterns to reactive
-- Basic tests, demo, and ensemble subset search benchmark
+- Randomness gate
+- Thought layer: 7-perspective analytical ensemble (toggleable, blended)
+- Knowledge layer: strength that fades; can be revised
+- Wisdom layer: append-only
+- Reactive mind: exact deterministic table
+- Chaos pile
+- Promotion path: Thought → Knowledge → Wisdom (+ Reactive)
+- Demo, basic tests, ensemble benchmark
 
 ## Run
 
@@ -37,4 +37,4 @@ python benchmarks/ensemble_search.py
 
 ## Status
 
-Working prototype with internal ensemble. Perspectives can be enabled/disabled; the benchmark searches subsets for best MSE on a synthetic structured task.
+Prototype with Thought / Knowledge / Wisdom consolidation. Wisdom is permanent; Knowledge fades; Thought is the live ensemble.
