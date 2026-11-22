@@ -399,6 +399,18 @@ class NoiseSeparatedSystem:
                 # Do not early-return; let knowledge and wisdom still be considered
 
         # --- Knowledge (still the medium-term store) ---
+        if not hasattr(self, "_kdbg"):
+            self._kdbg = {"enter": 0, "no_ex": 0, "low_hits": 0, "low_score": 0, "low_agr": 0, "budget": 0}
+        if existing is None:
+            self._kdbg["no_ex"] += 1
+        elif existing["hits"] < hits_needed:
+            self._kdbg["low_hits"] += 1
+        elif score < self.promote_score:
+            self._kdbg["low_score"] += 1
+        elif agreement < self.min_agreement:
+            self._kdbg["low_agr"] += 1
+        elif not self._chaos_budget_ok():
+            self._kdbg["budget"] += 1
         if (
             existing is not None
             and existing["hits"] >= hits_needed
@@ -406,6 +418,7 @@ class NoiseSeparatedSystem:
             and agreement >= self.min_agreement
             and self._chaos_budget_ok()
         ):
+            self._kdbg["enter"] += 1
             stored_y = y if y is not None else existing.get("output")
             boost = self.knowledge_boost + 0.2 * hyp_score
             self.knowledge.add_or_reinforce(x, stored_y, boost=boost, step=self._step)
@@ -429,13 +442,22 @@ class NoiseSeparatedSystem:
                 sustained = existing["hits"] >= max(25, hits_needed * 8)
                 know_strong = know_item is not None and know_item.strength >= 1.2
                 layers_agree = k_ok and r_ok and sustained and age_ok and know_strong
-            if layers_agree:
-                conf = know_item.strength if know_item else 1.0
-                self.wisdom.add(x, stored_y, confidence=conf, step=self._step)
-                self._record(x, {"kind": "promoted_wisdom", "y": stored_y,
-                                 "via": "self_observation", **context})
-                return "promoted_wisdom"
+                if not hasattr(self, "_wdbg"):
+                    self._wdbg = {"t": 0, "k": 0, "r": 0, "s": 0, "a": 0, "ks": 0}
+                self._wdbg["t"] += int(t_ok) if "t_ok" in dir() else 0
+                self._wdbg["k"] += int(k_ok)
+                self._wdbg["r"] += int(r_ok)
+                self._wdbg["s"] += int(sustained)
+                self._wdbg["a"] += int(age_ok)
+                self._wdbg["ks"] += int(know_strong)
             return "promoted_knowledge"
+
+        # Wisdom: sustained consistency, independent of ensemble agreement
+        if existing is not None and existing["hits"] >= max(25, hits_needed * 8):
+            know_item = self.knowledge.find_item(x)
+            if know_item is not None and know_item.strength >= 1.2:
+                self.wisdom.add(x, know_item.y, confidence=know_item.strength, step=self._step)
+                self._record(x, {"kind": "promoted_wisdom", "y": know_item.y})
 
         if self._step % 6 == 0:
             self.knowledge.fade()
