@@ -1,4 +1,4 @@
-"""File clerk with richer traces, unified log, and smarter chaos probing."""
+"""File clerk. Auditor severs and unlearns reinforcements."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -62,7 +62,7 @@ class NoiseSeparatedSystem:
         self._recent_agreements = []
         self._traces: Dict[str, List[Dict[str, Any]]] = {}
         self._recent_good: List[np.ndarray] = []
-        self.event_log: List[Dict[str, Any]] = []  # unified chronological log
+        self.event_log: List[Dict[str, Any]] = []
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -85,20 +85,31 @@ class NoiseSeparatedSystem:
     def get_trace(self, key: str) -> List[Dict[str, Any]]:
         return self._traces.get(key, [])
 
-    def refile_demote(self, key: str):
-        for k in list(self.reactive.table.keys())[:5]:
+    def unlearn(self, key: str):
+        """Remove locks and reinforcements that supported the irrational behavior."""
+        # 1. Drop reactive locks
+        for k in list(self.reactive.table.keys())[:8]:
             self.reactive.table.pop(k, None)
-        self._log("refile_demote", key=key)
 
-    def refile_weaken_wisdom(self, key: str):
+        # 2. Heavily weaken knowledge and wisdom
+        self.knowledge.fade()
+        self.knowledge.fade()
         for e in self.wisdom.entries:
-            e.confidence = max(0.0, e.confidence - 0.4)
-        self._log("refile_weaken_wisdom", key=key)
+            e.confidence = max(0.0, e.confidence - 0.5)
 
-    def refile_weaken_knowledge(self, key: str):
-        self.knowledge.fade()
-        self.knowledge.fade()
-        self._log("refile_weaken_knowledge", key=key)
+        # 3. Deactivate supporting hypotheses
+        for h in self.hypotheses.hypotheses:
+            if h.active:
+                h.active = False
+                h.rejections += 2
+
+        # 4. Clear the short-term buffer entries that may have reinforced hits
+        self.short_term.buffer = [
+            b for b in self.short_term.buffer
+            if self._trace_key(b.get("x", np.zeros(1))) != key
+        ]
+
+        self._log("unlearn", key=key)
 
     def refile_to_thought(self, key: str):
         for x in reversed(self._recent_good):
@@ -219,19 +230,18 @@ class NoiseSeparatedSystem:
             finding = self.auditor.audit_input(self, suspect, observed_y=y)
             if finding:
                 self.auditor.apply(self, finding)
-                self._log("audit_sever", disconnect=finding.disconnect_at, action=finding.action)
+                self._log("audit_unlearn", disconnect=finding.disconnect_at)
 
         return "thought"
 
     def _active_chaos_probe(self) -> bool:
-        """Prefer rejects whose score is closest to the threshold."""
         if not self.chaos.rejected:
             return False
         scored = []
         for cx in self.chaos.rejected[-30:]:
             s = self.gate.score(cx)
             scored.append((abs(s - self.gate.threshold), cx, s))
-        scored.sort(key=lambda t: t[0])  # closest to threshold first
+        scored.sort(key=lambda t: t[0])
         for _, cx, s in scored[:4]:
             if s >= self.gate.threshold - 0.05:
                 self.thought.observe(cx, y=None)
