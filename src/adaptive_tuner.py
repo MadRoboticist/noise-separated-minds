@@ -112,6 +112,6 @@ class AdaptiveTuner:
         for (src, dst) in DEFAULT_EDGES:
             # sample around the default, clipped to [0, 2.5]
             base = DEFAULT_EDGES[(src, dst)]
-            w = float(np.clip(base + self.rng.uniform(-0.6, 0.6), 0.0, 2.5))
+            w = float(np.clip(base + self.rng.uniform(-0.4, 0.4), 0.0, 1.0))
             edges[f"{src}->{dst}"] = round(w, 2)
         return edges

@@ -35,7 +35,7 @@ DEFAULT_EDGES = {
     ("trauma", "wisdom"): 0.4,
     # Output is fed by all
     ("thought", "output"): 1.0,
-    ("knowledge", "output"): 1.2,
+    ("knowledge", "output"): 1.0,
     ("reactive", "output"): 0.8,
     ("trauma", "output"): 0.2,
     ("wisdom", "output"): 0.9,
