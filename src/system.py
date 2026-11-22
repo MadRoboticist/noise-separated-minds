@@ -619,7 +619,8 @@ class NoiseSeparatedSystem:
         # Scalar controls
         self.fb_gain = float(np.clip(self.fb_gain + 0.5 * dw.get("fb_gain", 0.0), 0.0, 1.0))
         self.feedback.lr = float(np.clip(self.feedback.lr + 0.5 * dw.get("lr_feedback", 0.0), 0.001, 0.2))
-        self.next_input.lr = float(np.clip(self.next_input.lr + 0.5 * dw.get("lr_next", 0.0), 0.001, 0.2))
+        if self.next_input is not None:
+            self.next_input.lr = float(np.clip(self.next_input.lr + 0.5 * dw.get("lr_next", 0.0), 0.001, 0.2))
         # Thought linear lr lives on the perspectives
         if hasattr(self.thought, "mind"):
             for p in self.thought.mind.perspectives:
