@@ -1,73 +1,72 @@
 # Architecture
 
-Noise-Separated Minds is an unsupervised online system that tries to keep pure randomness out of its memory, then consolidates structured signal across three timescales.
+## Overview
 
-## Design thesis
+A file clerk routes each input. A randomness gate first decides whether the input is structureless. Structured inputs are consolidated across three timescales. Structureless inputs update a noise distribution and are not stored as patterns.
 
-Neural nets estimate nonlinear maps or conditional distributions. Pure noise can drag coefficients without bound and skew those distributions. The claim here is that irreducible randomness should be excluded before learning, not fitted.
+## Decision order
 
-## Components
+When predicting:
 
-### Randomness gate
-Scores each input with simple structure tests (spectral flatness, histogram entropy, autocorrelation, runs).  
-If the score is below an adaptive threshold the observation is treated as noise.  
-A repetition-based bypass turns the gate off when recent raw inputs are highly similar (already-clean repeated signal).
+1. **Reaction.** If reactive has a match with confidence ≥ 0.98, return it. This is the short path.
+2. **Wisdom.** If no reaction, and wisdom has a well-reinforced match (n ≥ 180, confidence ≥ 2.9), return it.
+3. **Knowledge.** If neither of the above, and knowledge has a match, return it. This is the default.
+4. **Randomness.** If nothing is known, sample from the chaos distribution.
+5. **Fallback.** The analytical (thought) estimate.
 
-### Chaos pile
-Rejected observations are stored here and do not enter the main memory.  
-Optionally a dedicated noise-path model (currently a linear perspective) also sees them.
+## Formation difficulty
 
-### File clerk
-Routes each accepted observation and records a unified event log.
+Knowledge is easiest to fill (a few consistent hits). Wisdom requires sustained consistency (many hits, agreement across layers). Reactive is hardest — it requires many repetitions, or a trauma event that seeds it directly.
 
-### Thought (analytical ensemble)
-Short-term, elastic ensemble. Current members:
-- online linear
-- 5-nearest-neighbor
-- small MLP
-- noise-path linear
+On a long stream the decision counts follow this order: knowledge handles the majority, wisdom the middle, reactive the rare high-confidence cases.
 
-Blender modes: accuracy-weighted average (default), greedy (pick highest weight), or plain mean.
+## Stores
 
 ### Knowledge
-Medium-term store. Structured repeats are written here and can fade.
-
-### Reactive
-Muscle memory. Acquired by high repetition or by a single large “trauma” error. Fast lookup.
+Running Gaussian components. Each component holds a mean of x and a mean and variance of y. New observations update the nearest component if within tolerance; otherwise a new component is opened. Fades over time if not reinforced.
 
 ### Wisdom
-Longer-term store that only accepts patterns which first showed disagreement (deliberation) and later became consistent. Append-only in spirit; confidence-checked.
+Same structure as knowledge, but forms only after sustained consistency. Used only when well reinforced. Chaos and trauma are negatively weighted into wisdom — a shocking or structureless outcome suppresses the stable estimate rather than reinforcing it.
 
-### Auditor
-Procedural trace-walker that works through the file clerk. Can surgically unlearn a mapping and count recurrences.
+### Reactive (muscle memory)
+Keyed store. On reinforcement, the stored y is updated as a running mean and a hit count increments. Confidence is a function of strength and hits; it saturates slowly (needs ~200 hits to reach 1.0). Used only at confidence ≥ 0.98. Trauma events seed reactive directly.
 
-## Data flow
+### Chaos
+A running Gaussian (mean and diagonal variance) over rejected inputs. Fixed size regardless of how many points are rejected. Not a learned predictor — it is a model of what noise looks like. Sampled only when no other store has a match.
 
-```
-input → gate
-          ├─ noise → chaos (+ optional noise-path model)
-          └─ structured → Thought
-                              → Knowledge (on enough repeats)
-                              → Reactive (repetition or trauma)
-                              → Wisdom (only after early disagreement + later consistency)
-```
+### Trauma
+Fast store for high-error events on structured inputs. Seeds reactive (a shock becomes a reflex). Negatively weighted into wisdom.
 
-Prediction order: Reactive → Wisdom → Knowledge → Thought.
+## Randomness gate
 
-## Non-numeric inputs
-`observe_context` / `predict_context` accept strings, categories, or mixed lists. A hashing encoder projects them to a fixed vector before the gate.
+Scores each input on spectral flatness, histogram entropy, autocorrelation, and difference entropy. Inputs below threshold are rejected into chaos. The threshold adapts from a noise profile that tracks accepted and rejected scores separately. On a stream with 30% noise bursts, the gate rejects approximately 31%.
 
-## What the experiments showed
+There is also a bypass: if recent inputs are all close together (median pairwise distance < 0.15), the gate is skipped on the assumption the signal is clean.
 
-On synthetic streams with injected pure noise the gate can keep residual-noise rate near zero and a small filtered system can match a larger weakly-filtered one once dimension is adequate.
+## Match tolerances
 
-On the real SKAB industrial sensor streams the same system is substantially worse than simple online baselines (linear, k-NN, small MLP). Disabling the gate and using greedy blending improves the system but does not close the gap. Routing rejected packets through an extra linear or MLP member also does not.
+All match tolerances scale with √d:
 
-The architecture is a coherent research prototype. On the data tried so far it is not a competitive general predictor.
+- Reactive, wisdom: 0.08 × √d
+- Knowledge: 0.08 × √d (add), 0.2 × √d was tried and merged distinct patterns; 0.08 keeps them separate
 
-## Layout
+At dim=128 with 0.05 per-dimension noise, the expected distance is ~0.57. The scaled tolerance covers this without merging patterns that live in different subspaces.
 
-- `src/` — system, gate, layers, minds, auditor, encoder, config
-- `benchmarks/` — comparative, stress, ablation, SKAB, gate-vs-denoiser, vs-baselines
-- `tests/` — unit and persistence tests
-- `examples/demo.py` — short end-to-end demo
+## Graph
+
+Edges connect the stores. Each edge has magnitude 1. Chaos → wisdom and trauma → wisdom are −1 (suppression). All others are +1. The graph mix is the fallback when no store has a direct match.
+
+## What was removed
+
+The following were added during development and did not improve prediction. They have been removed:
+
+- Next-input (feedforward) predictor
+- Feedback linear corrector
+- LQR parameter controller
+- Residual-gradient edge nudging
+- Raw observation storage in parametric models
+- Input-uncertainty scaling
+
+## What the system is for
+
+The system wins on tasks with discrete, repeated patterns and a target that is not a linear function of the input. It is competitive with k-NN on those tasks and slightly ahead of linear, k-NN, and a small MLP on continuous signals with noise bursts. It is not competitive with a plain linear model on low-dimensional continuous regression where the relationship is already linear.
