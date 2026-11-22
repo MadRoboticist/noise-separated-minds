@@ -1,4 +1,4 @@
-"""Thought ensemble: generative residual perspective, event log, auto-disable."""
+"""Thought ensemble with richer generative perspectives."""
 
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -61,6 +61,10 @@ class Perspective:
 
     def uncertainty(self, x: np.ndarray) -> float:
         return 1.0
+
+    def sample(self, x: np.ndarray) -> Optional[float]:
+        """Default: just the point prediction."""
+        return self.predict(x)
 
     def clear(self):
         self.xs.clear()
@@ -146,26 +150,104 @@ class OnlineLinearPerspective(Perspective):
         return float(np.append(x, 1.0) @ self.w)
 
 
-class ResidualGenerativePerspective(Perspective):
-    """Predicts local mean and tracks residual variance (simple generative)."""
+class GaussianMixturePerspective(Perspective):
+    """Small GMM on a 1-D projection of x, modeling p(y | proj)."""
 
-    def __init__(self, bandwidth: float = 0.6, max_obs: int = 2_000):
-        super().__init__("residual_gen", max_obs)
-        self.bandwidth = bandwidth
-        self.global_var = 1.0
+    def __init__(self, n_components: int = 3, max_obs: int = 2_000):
+        super().__init__("gmm", max_obs)
+        self.n_components = n_components
+        self.means = None
+        self.stds = None
+        self.weights = None
+        self.proj_centers = None
 
     def observe(self, x: np.ndarray, y: Any):
         super().observe(x, y)
-        if y is not None and len(self.ys) > 5:
-            ys = np.array([float(yi) for yi in self.ys if yi is not None])
-            if len(ys):
-                self.global_var = float(ys.var() + 1e-3)
+        if y is None or len(self.ys) < 12:
+            return
+        proj = np.array([xi.mean() for xi in self.xs])
+        ys = np.array([float(yi) if yi is not None else 0.0 for yi in self.ys])
+        # Initialize centers
+        qs = np.linspace(10, 90, self.n_components)
+        centers = np.percentile(proj, qs)
+        for _ in range(6):
+            dists = np.abs(proj[:, None] - centers[None, :])
+            assign = np.argmin(dists, axis=1)
+            for k in range(self.n_components):
+                mask = assign == k
+                if mask.any():
+                    centers[k] = proj[mask].mean()
+        self.proj_centers = centers
+        self.means = np.zeros(self.n_components)
+        self.stds = np.ones(self.n_components)
+        self.weights = np.ones(self.n_components) / self.n_components
+        dists = np.abs(proj[:, None] - centers[None, :])
+        assign = np.argmin(dists, axis=1)
+        for k in range(self.n_components):
+            mask = assign == k
+            if mask.any():
+                self.means[k] = ys[mask].mean()
+                self.stds[k] = ys[mask].std() + 0.1
+                self.weights[k] = mask.mean()
+        self.weights /= self.weights.sum() + 1e-12
+
+    def _responsibilities(self, x: np.ndarray) -> Optional[np.ndarray]:
+        if self.proj_centers is None:
+            return None
+        p = float(np.asarray(x).ravel().mean())
+        d = np.abs(p - self.proj_centers)
+        w = np.exp(-d) * self.weights
+        return w / (w.sum() + 1e-12)
 
     def predict(self, x: np.ndarray) -> Optional[float]:
-        if not self.xs:
+        r = self._responsibilities(x)
+        if r is None:
             return None
-        x = np.asarray(x, dtype=float).ravel()
-        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        return float(np.sum(r * self.means))
+
+    def uncertainty(self, x: np.ndarray) -> float:
+        r = self._responsibilities(x)
+        if r is None:
+            return 1.0
+        # Mixture variance
+        var = np.sum(r * (self.stds ** 2 + (self.means - np.sum(r * self.means)) ** 2))
+        return float(np.sqrt(var + 1e-6))
+
+    def sample(self, x: np.ndarray) -> Optional[float]:
+        r = self._responsibilities(x)
+        if r is None:
+            return None
+        k = np.random.choice(self.n_components, p=r)
+        return float(self.means[k] + self.stds[k] * np.random.randn())
+
+
+class LatentResidualPerspective(Perspective):
+    """Projects x to 2-D via random projection, fits local residual model."""
+
+    def __init__(self, latent_dim: int = 2, max_obs: int = 2_000):
+        super().__init__("latent_residual", max_obs)
+        self.latent_dim = latent_dim
+        self.W = None
+        self.bandwidth = 0.5
+
+    def observe(self, x: np.ndarray, y: Any):
+        super().observe(x, y)
+        if self.W is None and self.xs:
+            d = len(self.xs[0])
+            rng = np.random.RandomState(42)
+            self.W = rng.randn(d, self.latent_dim) / np.sqrt(d)
+
+    def _latent(self, x: np.ndarray) -> Optional[np.ndarray]:
+        if self.W is None:
+            return None
+        return np.asarray(x, dtype=float).ravel() @ self.W
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if not self.xs or self.W is None:
+            return None
+        z = self._latent(x)
+        zs = [xi @ self.W for xi in self.xs]
+        dists = np.array([np.linalg.norm(zi - z) for zi in zs])
         weights = np.exp(-dists ** 2 / (2 * self.bandwidth ** 2))
         s = weights.sum()
         if s < 1e-12:
@@ -174,36 +256,29 @@ class ResidualGenerativePerspective(Perspective):
         vals = np.array([float(y) if y is not None else 0.0 for y in self.ys])
         return float(np.sum(weights * vals))
 
-    def uncertainty(self, x: np.ndarray) -> float:
-        # residual scale + distance
-        if not self.xs:
-            return self.global_var
-        x = np.asarray(x, dtype=float).ravel()
-        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
-        return float(np.sqrt(self.global_var) * (1.0 + np.min(dists)))
-
-    def sample_residual(self, x: np.ndarray) -> Optional[float]:
+    def sample(self, x: np.ndarray) -> Optional[float]:
         mu = self.predict(x)
         if mu is None:
             return None
-        return float(mu + np.random.randn() * np.sqrt(self.global_var))
+        # crude residual
+        return float(mu + 0.1 * np.random.randn())
 
 
 class AnalyticalMind:
     def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
         self.perspectives: List[Perspective] = [
             LocalWeightedPerspective(max_obs=max_obs),
-            NearestNeighborPerspective(k=1, max_obs=max_obs),
             NearestNeighborPerspective(k=3, max_obs=max_obs),
             OnlineLinearPerspective(max_obs=max_obs),
-            ResidualGenerativePerspective(max_obs=max_obs),
-            LocalWeightedPerspective(bandwidth=1.2, max_obs=max_obs),
-            NearestNeighborPerspective(k=5, max_obs=max_obs),
+            GaussianMixturePerspective(n_components=3, max_obs=max_obs),
+            LatentResidualPerspective(max_obs=max_obs),
+            LocalWeightedPerspective(bandwidth=1.0, max_obs=max_obs),
+            NearestNeighborPerspective(k=1, max_obs=max_obs),
         ]
         self.perspectives[5].name = "local_wide"
         self.blender_mode = "accuracy"
         self.collapse_threshold = collapse_threshold
-        self.events: List[str] = []  # collapse / recover log
+        self.events: List[str] = []
 
     def set_enabled(self, names: List[str]):
         for p in self.perspectives:
@@ -271,6 +346,13 @@ class AnalyticalMind:
         if self.blender_mode == "mean":
             return float(np.mean(preds))
         return float(np.sum(weights * preds))
+
+    def sample_generative(self, x: np.ndarray) -> Optional[float]:
+        """Draw from the best generative perspective if available."""
+        for p in self._active():
+            if isinstance(p, (GaussianMixturePerspective, LatentResidualPerspective)):
+                return p.sample(x)
+        return self.sample(x)
 
     def uncertainty(self, x: np.ndarray) -> float:
         active = self._active()
