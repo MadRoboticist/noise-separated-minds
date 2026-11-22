@@ -1,4 +1,4 @@
-"""File clerk with active calibration and audit export."""
+"""File clerk. Accepts SystemConfig. Tracks Wisdom reliability."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -10,53 +10,44 @@ from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
 from .hypotheses import HypothesisTracker
+from .config import SystemConfig
 
 
 class NoiseSeparatedSystem:
-    def __init__(
-        self,
-        noise_threshold: float = 0.35,
-        promote_hits: int = 4,
-        promote_score: float = 0.75,
-        min_agreement: float = 0.6,
-        min_age: int = 8,
-        knowledge_boost: float = 0.4,
-        wisdom_strength: float = 1.5,
-        explore_prob: float = 0.05,
-        explore_min: float = 0.01,
-        explore_max: float = 0.2,
-        demote_error_tol: float = 0.5,
-        max_obs: int = 2_000,
-        max_chaos: int = 5_000,
-        chaos_promote_budget: float = 0.15,
-        revalidate_interval: int = 40,
-        audit_every: int = 20,
-    ):
-        self.gate = RandomnessGate(base_threshold=noise_threshold)
+    def __init__(self, config: Optional[SystemConfig] = None, **kwargs):
+        cfg = config or SystemConfig()
+        # Allow overrides
+        for k, v in kwargs.items():
+            if hasattr(cfg, k):
+                setattr(cfg, k, v)
+        self.cfg = cfg
+
+        self.gate = RandomnessGate(base_threshold=cfg.noise_threshold)
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
-            p.max_obs = max_obs
+            p.max_obs = cfg.max_obs
         self.knowledge = KnowledgeLayer()
         self.wisdom = WisdomLayer()
-        self.chaos = ChaosPile(max_rejected=max_chaos)
+        self.chaos = ChaosPile(max_rejected=cfg.max_chaos)
         self.auditor = Auditor()
         self.hypotheses = HypothesisTracker()
 
-        self.promote_hits = promote_hits
-        self.promote_score = promote_score
-        self.min_agreement = min_agreement
-        self.min_age = min_age
-        self.knowledge_boost = knowledge_boost
-        self.wisdom_strength = wisdom_strength
-        self.explore_prob = explore_prob
-        self.explore_min = explore_min
-        self.explore_max = explore_max
-        self.demote_error_tol = demote_error_tol
-        self.chaos_promote_budget = chaos_promote_budget
-        self.revalidate_interval = revalidate_interval
-        self.audit_every = audit_every
+        self.promote_hits = cfg.promote_hits
+        self.promote_score = cfg.promote_score
+        self.min_agreement = cfg.min_agreement
+        self.min_age = cfg.min_age
+        self.knowledge_boost = cfg.knowledge_boost
+        self.wisdom_strength = cfg.wisdom_strength
+        self.explore_prob = cfg.explore_prob
+        self.explore_min = cfg.explore_min
+        self.explore_max = cfg.explore_max
+        self.demote_error_tol = cfg.demote_error_tol
+        self.chaos_promote_budget = cfg.chaos_promote_budget
+        self.revalidate_interval = cfg.revalidate_interval
+        self.audit_every = cfg.audit_every
+
         self._step = 0
         self._reentries = 0
         self._chaos_promotions = 0
@@ -65,7 +56,9 @@ class NoiseSeparatedSystem:
         self._recent_good: List[np.ndarray] = []
         self.event_log: List[Dict[str, Any]] = []
         self._calib: List[tuple] = []
-        self.temperature = 1.0  # active calibration scale
+        self.temperature = 1.0
+        # Wisdom reliability: (confidence_bin, was_correct)
+        self._wisdom_rel: List[tuple] = []
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -120,8 +113,6 @@ class NoiseSeparatedSystem:
         self._calib.append((bin_id, correct))
         if len(self._calib) > 500:
             self._calib = self._calib[-500:]
-        # Active correction: adjust temperature so high-uncertainty bins
-        # are less trusted when they are often wrong
         if len(self._calib) > 30 and self._step % 15 == 0:
             summary = self.calibration_summary()
             high = summary.get(4, summary.get(3, 0.5))
@@ -141,8 +132,21 @@ class NoiseSeparatedSystem:
     def calibrated_uncertainty(self, raw: float) -> float:
         return float(raw * self.temperature)
 
+    def record_wisdom_reliability(self, confidence: float, correct: bool):
+        bin_id = int(np.clip(confidence, 0, 4))
+        self._wisdom_rel.append((bin_id, correct))
+        if len(self._wisdom_rel) > 300:
+            self._wisdom_rel = self._wisdom_rel[-300:]
+
+    def wisdom_reliability(self) -> dict:
+        if not self._wisdom_rel:
+            return {}
+        bins = defaultdict(list)
+        for b, c in self._wisdom_rel:
+            bins[b].append(c)
+        return {b: round(float(np.mean(v)), 3) for b, v in sorted(bins.items())}
+
     def export_audit_trail(self, path: str):
-        """Write a human-readable audit trail."""
         with open(path, "w") as f:
             f.write("# Audit trail\n\n")
             for finding in self.auditor.findings[-50:]:
@@ -199,6 +203,11 @@ class NoiseSeparatedSystem:
                         self._log("hypothesis_triggered_audit")
 
         if y is not None:
+            # Wisdom reliability sample
+            for e in self.wisdom.entries:
+                if np.linalg.norm(e.x - np.asarray(x).ravel()) < 0.2:
+                    correct = abs(float(e.y) - float(y)) < self.demote_error_tol
+                    self.record_wisdom_reliability(e.confidence, correct)
             if not self.wisdom.check(x, y, tol=self.demote_error_tol, step=self._step):
                 self.thought.observe(x, y)
                 self.knowledge.add_or_reinforce(x, y, boost=-0.3, step=self._step)
@@ -357,6 +366,7 @@ class NoiseSeparatedSystem:
             "auditor_findings": len(self.auditor.findings),
             "event_log_len": len(self.event_log),
             "calibration": self.calibration_summary(),
+            "wisdom_reliability": self.wisdom_reliability(),
             "temperature": round(self.temperature, 3),
             "step": self._step,
         }
