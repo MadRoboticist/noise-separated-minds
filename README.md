@@ -8,7 +8,7 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Surgical unlearn with recurrence counter (`stats()["recurrent_unlearns"]`).
+Surgical unlearn. Trail now records before	o after strength/confidence for the exact knowledge and wisdom items that were weakened, plus recurrence count.
 
 ## Generative blender
 
@@ -20,11 +20,9 @@ Thought temperature scaling + Wisdom confidence reliability.
 
 ## Chaos probing
 
-Threshold proximity + similarity to recent good inputs.
+Threshold proximity + **recency-weighted** similarity to recent good inputs (newer goods count more).
 
 ## Persistence
-
-`save` / `load` round-trips config, temperature, calibration bins, and unlearn counts.
 
 ```bash
 python tests/test_persistence.py
