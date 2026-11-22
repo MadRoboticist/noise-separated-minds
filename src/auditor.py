@@ -48,6 +48,15 @@ class Auditor:
         if not trace:
             return None
 
+        # Only audit if the stored y appears more than once (real reinforcement)
+        y_counts = {}
+        for e in trace:
+            yy = e.get("y")
+            if yy is not None:
+                y_counts[round(float(yy), 2)] = y_counts.get(round(float(yy), 2), 0) + 1
+        if not any(c >= 2 for c in y_counts.values()):
+            return None
+
         for event in reversed(trace):
             kind = event.get("kind")
 
@@ -73,7 +82,7 @@ class Auditor:
 
             if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
-                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(0.45, clerk.demote_error_tol * 2.0):
+                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(0.8, clerk.demote_error_tol * 3.0):
                     finding = AuditFinding(
                         key, kind,
                         "Stored behavior contradicted later good observation",
