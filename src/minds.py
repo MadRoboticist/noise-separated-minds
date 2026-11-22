@@ -1,4 +1,4 @@
-"""Analytical ensemble with bounded memory and accuracy tracking."""
+"""Analytical ensemble: auto-disable collapsed perspectives, mixture model, better uncertainty."""
 
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -14,7 +14,6 @@ class ReactiveMind:
 
     def store(self, x: np.ndarray, y: Any):
         if len(self.table) >= self.max_entries:
-            # drop an arbitrary old entry
             self.table.pop(next(iter(self.table)))
         self.table[self._key(x)] = y
 
@@ -29,6 +28,7 @@ class Perspective:
     def __init__(self, name: str, max_obs: int = 2_000):
         self.name = name
         self.enabled = True
+        self.auto_disabled = False
         self.max_obs = max_obs
         self.xs: List[np.ndarray] = []
         self.ys: List[Any] = []
@@ -38,19 +38,23 @@ class Perspective:
         self.xs.append(np.asarray(x, dtype=float).ravel())
         self.ys.append(y)
         if len(self.xs) > self.max_obs:
-            # drop oldest
             self.xs.pop(0)
             self.ys.pop(0)
 
     def record_error(self, err: float):
         self.recent_errors.append(abs(err))
-        if len(self.recent_errors) > 50:
+        if len(self.recent_errors) > 40:
             self.recent_errors.pop(0)
 
     def accuracy_weight(self) -> float:
         if not self.recent_errors:
             return 1.0
         return 1.0 / (1.0 + float(np.mean(self.recent_errors)))
+
+    def is_collapsed(self, threshold: float = 5.0) -> bool:
+        if len(self.recent_errors) < 10:
+            return False
+        return float(np.mean(self.recent_errors)) > threshold
 
     def predict(self, x: np.ndarray) -> Optional[float]:
         raise NotImplementedError
@@ -62,6 +66,7 @@ class Perspective:
         self.xs.clear()
         self.ys.clear()
         self.recent_errors.clear()
+        self.auto_disabled = False
 
 
 class LocalWeightedPerspective(Perspective):
@@ -75,7 +80,10 @@ class LocalWeightedPerspective(Perspective):
         x = np.asarray(x, dtype=float).ravel()
         dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
         weights = np.exp(-dists ** 2 / (2 * self.bandwidth ** 2))
-        weights /= weights.sum() + 1e-12
+        s = weights.sum()
+        if s < 1e-12:
+            return None
+        weights /= s
         vals = np.array([float(y) if y is not None else 0.0 for y in self.ys])
         return float(np.sum(weights * vals))
 
@@ -84,7 +92,7 @@ class LocalWeightedPerspective(Perspective):
             return 1.0
         x = np.asarray(x, dtype=float).ravel()
         dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
-        return float(np.mean(np.sort(dists)[:5]))
+        return float(np.mean(np.sort(dists)[: min(5, len(dists))]))
 
 
 class NearestNeighborPerspective(Perspective):
@@ -100,6 +108,13 @@ class NearestNeighborPerspective(Perspective):
         idx = np.argsort(dists)[: self.k]
         vals = [float(self.ys[i]) for i in idx if self.ys[i] is not None]
         return float(np.mean(vals)) if vals else None
+
+    def uncertainty(self, x: np.ndarray) -> float:
+        if not self.xs:
+            return 1.0
+        x = np.asarray(x, dtype=float).ravel()
+        dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
+        return float(np.min(dists))
 
 
 class OnlineLinearPerspective(Perspective):
@@ -131,32 +146,90 @@ class OnlineLinearPerspective(Perspective):
         return float(np.append(x, 1.0) @ self.w)
 
 
-class AnalyticalMind:
+class MixturePerspective(Perspective):
+    """Tiny two-component mixture on a 1-D projection (mean of features)."""
+
     def __init__(self, max_obs: int = 2_000):
+        super().__init__("mixture", max_obs)
+        self.means = None
+        self.vars = None
+        self.weights = None
+
+    def observe(self, x: np.ndarray, y: Any):
+        super().observe(x, y)
+        if y is None or len(self.ys) < 8:
+            return
+        # Fit on scalar projection
+        proj = np.array([xi.mean() for xi in self.xs])
+        ys = np.array([float(yi) if yi is not None else 0.0 for yi in self.ys])
+        # Simple 2-means on proj
+        c0, c1 = np.percentile(proj, [33, 66])
+        for _ in range(4):
+            d0 = np.abs(proj - c0)
+            d1 = np.abs(proj - c1)
+            a = d0 <= d1
+            if a.any():
+                c0 = proj[a].mean()
+            if (~a).any():
+                c1 = proj[~a].mean()
+        self.means = np.array([c0, c1])
+        self.weights = np.array([a.mean(), 1 - a.mean()])
+        self.vars = np.array([
+            ys[a].var() + 1e-3 if a.any() else 1.0,
+            ys[~a].var() + 1e-3 if (~a).any() else 1.0,
+        ])
+        # store component predictions as last y means
+        self._ymeans = np.array([
+            ys[a].mean() if a.any() else ys.mean(),
+            ys[~a].mean() if (~a).any() else ys.mean(),
+        ])
+
+    def predict(self, x: np.ndarray) -> Optional[float]:
+        if self.means is None:
+            return None
+        p = float(np.asarray(x).mean())
+        d = np.abs(p - self.means)
+        w = np.exp(-d) * self.weights
+        w /= w.sum() + 1e-12
+        return float(np.sum(w * self._ymeans))
+
+
+class AnalyticalMind:
+    def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
         self.perspectives: List[Perspective] = [
             LocalWeightedPerspective(max_obs=max_obs),
             NearestNeighborPerspective(k=1, max_obs=max_obs),
             NearestNeighborPerspective(k=3, max_obs=max_obs),
             OnlineLinearPerspective(max_obs=max_obs),
-            LocalWeightedPerspective(bandwidth=1.0, max_obs=max_obs),
+            MixturePerspective(max_obs=max_obs),
+            LocalWeightedPerspective(bandwidth=1.2, max_obs=max_obs),
             NearestNeighborPerspective(k=5, max_obs=max_obs),
-            OnlineLinearPerspective(lr=0.02, max_obs=max_obs),
         ]
-        self.perspectives[4].name = "local_wide"
-        self.perspectives[6].name = "online_linear_slow"
+        self.perspectives[5].name = "local_wide"
         self.blender_mode = "accuracy"
+        self.collapse_threshold = collapse_threshold
 
     def set_enabled(self, names: List[str]):
         for p in self.perspectives:
             p.enabled = any(p.name == n or p.name.startswith(n) for n in names)
+            p.auto_disabled = False
 
     def enable_all(self):
         for p in self.perspectives:
             p.enabled = True
+            p.auto_disabled = False
+
+    def _refresh_disabled(self):
+        for p in self.perspectives:
+            if p.enabled and p.is_collapsed(self.collapse_threshold):
+                p.auto_disabled = True
+            elif p.auto_disabled and not p.is_collapsed(self.collapse_threshold * 0.6):
+                p.auto_disabled = False  # recover if errors improve
 
     def observe(self, x: np.ndarray, y: Optional[Any] = None):
+        self._refresh_disabled()
         for p in self.perspectives:
-            if p.enabled:
+            if p.enabled and not p.auto_disabled:
                 if y is not None:
                     pred = p.predict(x)
                     if pred is not None:
@@ -164,14 +237,11 @@ class AnalyticalMind:
                 p.observe(x, y)
 
     def _active(self):
-        return [p for p in self.perspectives if p.enabled]
+        return [p for p in self.perspectives if p.enabled and not p.auto_disabled]
 
     def agreement(self, x: np.ndarray, tol: float = 0.3) -> float:
-        preds = []
-        for p in self._active():
-            pr = p.predict(x)
-            if pr is not None:
-                preds.append(pr)
+        preds = [p.predict(x) for p in self._active()]
+        preds = [pr for pr in preds if pr is not None]
         if len(preds) < 2:
             return 1.0
         preds = np.array(preds)
@@ -181,16 +251,17 @@ class AnalyticalMind:
     def sample(self, x: np.ndarray) -> Optional[float]:
         active = self._active()
         if not active:
+            # fall back to any enabled
+            active = [p for p in self.perspectives if p.enabled]
+        if not active:
             return None
         preds, weights = [], []
         for p in active:
             pr = p.predict(x)
             if pr is not None:
                 preds.append(pr)
-                if self.blender_mode == "accuracy":
-                    weights.append(p.accuracy_weight())
-                else:
-                    weights.append(1.0 / max(p.uncertainty(x), 1e-6))
+                w = p.accuracy_weight() / max(p.uncertainty(x), 0.1)
+                weights.append(w)
         if not preds:
             return None
         preds = np.array(preds)
@@ -206,7 +277,12 @@ class AnalyticalMind:
         active = self._active()
         if not active:
             return 1.0
-        return float(np.mean([p.uncertainty(x) for p in active]))
+        uncs = [p.uncertainty(x) for p in active]
+        # also penalize disagreement
+        preds = [p.predict(x) for p in active]
+        preds = [pr for pr in preds if pr is not None]
+        disagree = float(np.std(preds)) if len(preds) > 1 else 0.0
+        return float(np.mean(uncs) + disagree)
 
     def __len__(self):
         return len(self.perspectives[0].xs) if self.perspectives else 0
@@ -214,6 +290,10 @@ class AnalyticalMind:
     @property
     def names(self):
         return [p.name for p in self.perspectives]
+
+    @property
+    def active_names(self):
+        return [p.name for p in self._active()]
 
 
 class ChaosPile:
