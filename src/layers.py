@@ -5,7 +5,7 @@
 - Wisdom: only grows; append-only invariants.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 import numpy as np
 from .minds import AnalyticalMind
 
@@ -14,8 +14,7 @@ class ThoughtLayer:
     """Short-term figuring. Can be lost entirely."""
 
     def __init__(self):
-        self.mind = AnalyticalMind()  # the ensemble
-        self.max_age = 50  # observations before forced decay consideration
+        self.mind = AnalyticalMind()
 
     def observe(self, x: np.ndarray, y: Any = None):
         self.mind.observe(x, y)
@@ -27,7 +26,6 @@ class ThoughtLayer:
         return self.mind.uncertainty(x)
 
     def clear(self):
-        """Thoughts can be lost."""
         for p in self.mind.perspectives:
             p.clear()
 
@@ -41,33 +39,29 @@ class KnowledgeItem:
         self.y = y
         self.strength = strength
         self.hits = 1
-        self.last_seen = 0
 
 
 class KnowledgeLayer:
-    """Medium-term. Strength fades with disuse; can be revised."""
+    """Medium-term. Strength fades; can be weakened by contradiction."""
 
-    def __init__(self, fade_rate: float = 0.98, min_strength: float = 0.1):
+    def __init__(self, fade_rate: float = 0.98, min_strength: float = 0.05):
         self.items: List[KnowledgeItem] = []
         self.fade_rate = fade_rate
         self.min_strength = min_strength
-        self.tick = 0
 
     def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3):
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
             if np.allclose(item.x, x, atol=0.15):
                 item.hits += 1
-                item.strength = min(2.0, item.strength + boost)
-                item.last_seen = self.tick
+                item.strength = max(0.0, min(3.0, item.strength + boost))
                 if y is not None:
-                    item.y = y  # allow revision
+                    item.y = y
                 return
-        self.items.append(KnowledgeItem(x, y, strength=1.0))
+        if boost > 0:
+            self.items.append(KnowledgeItem(x, y, strength=max(0.5, boost)))
 
     def fade(self):
-        """Knowledge can fade."""
-        self.tick += 1
         alive = []
         for item in self.items:
             item.strength *= self.fade_rate
@@ -94,18 +88,16 @@ class KnowledgeLayer:
 
 
 class WisdomLayer:
-    """Long-term. Only grows. Never erased."""
+    """Long-term. Only grows."""
 
     def __init__(self):
-        self.entries: List[Tuple[np.ndarray, Any, float]] = []  # x, y, confidence
+        self.entries: List[Tuple[np.ndarray, Any, float]] = []
 
     def add(self, x: np.ndarray, y: Any, confidence: float = 1.0):
-        """Append-only."""
         x = np.asarray(x, dtype=float).ravel()
-        # Avoid exact duplicates
         for ex, ey, ec in self.entries:
             if np.allclose(ex, x, atol=1e-6):
-                return  # already known
+                return
         self.entries.append((x, y, confidence))
 
     def lookup(self, x: np.ndarray, tol: float = 0.1) -> Optional[Any]:
@@ -117,6 +109,3 @@ class WisdomLayer:
 
     def __len__(self):
         return len(self.entries)
-
-    def all(self):
-        return list(self.entries)
