@@ -257,8 +257,7 @@ class NoiseSeparatedSystem:
                 self._err_window.append(abs(float(pred) - float(y)))
                 if len(self._err_window) > 100:
                     self._err_window.pop(0)
-            self._nudge_graph(x, y, pred)
-            
+                        
             self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
