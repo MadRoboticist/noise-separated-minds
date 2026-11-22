@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, TraumaStore, ChaosPile
+from .minds import ReactiveMind, TraumaStore, ChaosPile, FeedbackLinear
 from .mind_graph import MindGraph
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
@@ -27,6 +27,7 @@ class NoiseSeparatedSystem:
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.trauma = TraumaStore()
+        self.feedback = FeedbackLinear()
         self.graph_mode = 'blend'
         self.graph = MindGraph()  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
@@ -251,6 +252,8 @@ class NoiseSeparatedSystem:
                 if len(self._err_window) > 100:
                     self._err_window.pop(0)
             self._nudge_graph(x, y, pred)
+            if pred is not None:
+                self.feedback.observe(x, float(y) - float(pred))
             self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
@@ -628,6 +631,8 @@ class NoiseSeparatedSystem:
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
         pred = self.graph.compute_output(votes)
+        if pred is not None:
+            pred = float(pred) + self.feedback.correct(x)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via

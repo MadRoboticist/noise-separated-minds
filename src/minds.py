@@ -570,3 +570,37 @@ class TraumaStore:
 
     def __len__(self):
         return len(self.table)
+
+
+class FeedbackLinear:
+    """Linear model on the feedback path.
+    Learns to predict the residual from the input, then supplies a correction
+    that is subtracted from the graph output before it is fed back.
+    """
+    def __init__(self, lr: float = 0.02, reg: float = 1e-3):
+        self.lr = lr
+        self.reg = reg
+        self.w = None
+        self._step = 0
+
+    def observe(self, x, residual):
+        if residual is None:
+            return
+        x = np.asarray(x, dtype=float).ravel()
+        if self.w is None or len(self.w) != len(x) + 1:
+            self.w = np.zeros(len(x) + 1)
+        x_aug = np.append(x, 1.0)
+        pred = float(x_aug @ self.w)
+        err = float(residual) - pred
+        self._step += 1
+        lr = self.lr / (1.0 + 0.001 * self._step)
+        delta = lr * (err * x_aug - self.reg * self.w)
+        self.w += np.clip(delta, -0.5, 0.5)
+
+    def correct(self, x) -> float:
+        if self.w is None:
+            return 0.0
+        x = np.asarray(x, dtype=float).ravel()
+        if len(self.w) != len(x) + 1:
+            return 0.0
+        return float(np.append(x, 1.0) @ self.w)
