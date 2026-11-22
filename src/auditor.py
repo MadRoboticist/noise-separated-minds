@@ -156,7 +156,7 @@ class Auditor:
         # Contradiction means an outlier moved the mean. Tighten the cap
         # so the next outlier moves it less. Recovers slowly.
         if hasattr(clerk, "outlier_cap"):
-            clerk.outlier_cap = max(0.5, clerk.outlier_cap * 0.9)
+            clerk.outlier_cap = max(0.05, clerk.outlier_cap * 0.9)
             for item in clerk.knowledge.items:
                 item._outlier_cap = clerk.outlier_cap
         clerk.unlearn(finding.input_key)
