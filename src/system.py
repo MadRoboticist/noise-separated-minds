@@ -1,4 +1,4 @@
-"""Consolidation with time-gap requirement and Wisdom re-validation."""
+"""System with independent auditor."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -6,6 +6,7 @@ from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
+from .auditor import Auditor
 
 
 class NoiseSeparatedSystem:
@@ -26,6 +27,7 @@ class NoiseSeparatedSystem:
         max_chaos: int = 5_000,
         chaos_promote_budget: float = 0.15,
         revalidate_interval: int = 40,
+        audit_every: int = 20,
     ):
         self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
@@ -36,6 +38,7 @@ class NoiseSeparatedSystem:
         self.knowledge = KnowledgeLayer()
         self.wisdom = WisdomLayer()
         self.chaos = ChaosPile(max_rejected=max_chaos)
+        self.auditor = Auditor(error_tol=demote_error_tol)
 
         self.promote_hits = promote_hits
         self.promote_score = promote_score
@@ -49,6 +52,7 @@ class NoiseSeparatedSystem:
         self.demote_error_tol = demote_error_tol
         self.chaos_promote_budget = chaos_promote_budget
         self.revalidate_interval = revalidate_interval
+        self.audit_every = audit_every
         self._step = 0
         self._reentries = 0
         self._chaos_promotions = 0
@@ -120,8 +124,6 @@ class NoiseSeparatedSystem:
         ):
             stored_y = y if y is not None else existing.get("output")
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
-
-            # Wisdom only after the pattern has aged
             if age_ok:
                 item = self.knowledge.find_item(x)
                 if item and item.strength >= self.wisdom_strength:
@@ -138,6 +140,10 @@ class NoiseSeparatedSystem:
             self._check_demotions(x, y)
             self._revalidate_wisdom()
 
+        if self._step % self.audit_every == 0:
+            findings = self.auditor.inspect(self)
+            self.auditor.apply(self, findings)
+
         return "thought"
 
     def _active_chaos_probe(self) -> bool:
@@ -150,9 +156,8 @@ class NoiseSeparatedSystem:
         return False
 
     def _revalidate_wisdom(self):
-        """Periodically force old Wisdom entries back through Thought."""
         due = self.wisdom.due_for_revalidation(self._step, self.revalidate_interval)
-        for e in due[:2]:  # limit work per step
+        for e in due[:2]:
             self.thought.observe(e.x, e.y)
             e.last_checked = self._step
 
@@ -193,7 +198,7 @@ class NoiseSeparatedSystem:
             "wisdom_active": self.wisdom.active_count,
             "reactive": len(self.reactive),
             "chaos": len(self.chaos),
-            "chaos_probes": self.chaos.probe_attempts,
+            "auditor_findings": len(self.auditor.findings),
             "explore_prob": round(self.explore_prob, 4),
             "gate_threshold": round(self.gate.threshold, 3),
             "step": self._step,
