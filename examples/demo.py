@@ -1,4 +1,4 @@
-"""Demo of full feedback: promotion, demotion, chaos re-entry."""
+"""Demo including Wisdom confidence checks."""
 
 import numpy as np
 import sys
@@ -11,29 +11,26 @@ def main():
     system = NoiseSeparatedSystem(
         noise_threshold=0.3,
         promote_hits=3,
-        wisdom_strength=1.3,
-        explore_prob=0.0,  # disable explore for clean demo
+        wisdom_strength=1.2,
+        explore_prob=0.0,
     )
 
-    print("=== Noise ===")
-    print(system.observe(np.random.randn(16)))
-
-    print("\n=== Promote a signal ===")
     signal = np.sin(np.linspace(0, 3 * np.pi, 16))
-    for i in range(6):
-        route = system.observe(signal, y=1.0)
-        print(f"  {i}: {route}")
 
-    print("Stats after promotion:", system.stats())
+    print("=== Promote to Wisdom ===")
+    for i in range(7):
+        print(i, system.observe(signal, y=1.0))
+    print(system.stats())
 
-    print("\n=== Contradict it (should demote) ===")
-    for i in range(4):
-        route = system.observe(signal, y=5.0)  # large error
-        print(f"  contradict {i}: {route}")
+    print("\n=== Contradict Wisdom ===")
+    for i in range(5):
+        print(i, system.observe(signal, y=9.0))
+    print(system.stats())
 
-    print("Stats after contradiction:", system.stats())
     pred, route = system.predict(signal)
-    print(f"Prediction now: {pred} via {route}")
+    print(f"After contradiction: {pred} via {route}")
+    print("Wisdom entries still exist:", len(system.wisdom),
+          "active:", system.wisdom.active_count)
 
 
 if __name__ == "__main__":
