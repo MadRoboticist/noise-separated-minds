@@ -62,6 +62,10 @@ class AdaptiveTuner:
         s = NoiseSeparatedSystem(config=cfg)
         if "graph_mode" in overrides:
             s.graph_mode = overrides["graph_mode"]
+        if "edges" in overrides:
+            for k, w in overrides["edges"].items():
+                src, dst = k.split("->")
+                s.graph.set_weight(src, dst, w)
         s.edge_weights = {
             "thought": overrides.get("edge_w_thought", 1.0),
             "knowledge": overrides.get("edge_w_knowledge", 1.2),
@@ -99,3 +103,15 @@ class AdaptiveTuner:
 
     def top(self, k: int = 5) -> List[Dict[str, Any]]:
         return sorted(self.history, key=lambda h: h["error"])[:k]
+
+
+    def sample_edges(self) -> dict:
+        """Sample a weight for every edge in the graph."""
+        from .mind_graph import DEFAULT_EDGES
+        edges = {}
+        for (src, dst) in DEFAULT_EDGES:
+            # sample around the default, clipped to [0, 2.5]
+            base = DEFAULT_EDGES[(src, dst)]
+            w = float(np.clip(base + self.rng.uniform(-0.6, 0.6), 0.0, 2.5))
+            edges[f"{src}->{dst}"] = round(w, 2)
+        return edges
