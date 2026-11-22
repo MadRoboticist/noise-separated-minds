@@ -649,17 +649,26 @@ class NoiseSeparatedSystem:
         # 1. Reaction: short path, only at very high confidence
         if "reactive" in raw:
             conf = self.reactive.confidence(x) if hasattr(self.reactive, "confidence") else 0.0
-            if conf >= 0.95:
+            if conf >= 0.98:
                 pred = raw["reactive"]
                 via = "reactive"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
                 return pred, via
         # 2. No reaction -> think. Thought consults wisdom, then knowledge, else chaos.
         if "wisdom" in raw:
-            pred = raw["wisdom"]
-            via = "thought:wisdom"
-            self._record(x, {"kind": "predict", "pred": pred, "via": via})
-            return pred, via
+            # Only defer to wisdom when it is well established
+            w_entry = None
+            x_arr = np.asarray(x, dtype=float).ravel()
+            for e in self.wisdom.entries:
+                if e.x.shape == x_arr.shape and np.linalg.norm(e.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
+                    w_entry = e
+                    break
+            if w_entry is not None and w_entry.confidence >= 2.5 and w_entry.n >= 40:
+                pred = raw["wisdom"]
+                via = "thought:wisdom"
+                self._record(x, {"kind": "predict", "pred": pred, "via": via})
+                return pred, via
+            # else fall through to knowledge
         if "knowledge" in raw:
             pred = raw["knowledge"]
             via = "thought:knowledge"
