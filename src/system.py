@@ -7,6 +7,7 @@ from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, TraumaStore, ChaosPile, FeedbackLinear, NextInputLinear
 from .mind_graph import MindGraph
+from .edge_lqr import EdgeLQR
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
@@ -31,7 +32,10 @@ class NoiseSeparatedSystem:
         self.next_input = NextInputLinear()
         self._prev_x = None
         self.graph_mode = 'blend'
-        self.graph = MindGraph()  # cascade | blend | thought_consults
+        self.graph = MindGraph()
+        self.edge_lqr = EdgeLQR(
+            ["thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"]
+        )  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -565,12 +569,17 @@ class NoiseSeparatedSystem:
         scale = 1.0 - 0.7 * self._input_uncertainty()
         step = 0.02 * signed * scale
 
-        # Credit: edges into output are nudged proportional to their weight
-        # (higher weight = more responsibility for the residual)
+        # LQR-optimal step on output edges (falls back to small nudge if model is cold)
+        out_w = {src: self.graph.weight(src, "output")
+                 for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos")}
+        self.edge_lqr.observe(out_w, err)
+        lqr_dw = self.edge_lqr.step(out_w, err)
         for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
             w = self.graph.weight(src, "output")
-            if w > 0.01:
-                delta = step * w
+            delta = lqr_dw.get(src, 0.0)
+            # blend with the residual-scaled nudge so cold start still moves
+            delta = 0.7 * delta + 0.3 * step * w
+            if abs(delta) > 1e-6:
                 self.graph.set_weight(src, "output", max(0.0, min(1.0, w + delta)))
 
         # Internal edges: nudge the ones that feed nodes which themselves
