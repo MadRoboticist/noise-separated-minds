@@ -237,6 +237,13 @@ class NoiseSeparatedSystem:
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
+        # Audit before any early return
+        if self._step % self.audit_every == 0 and self._recent_good and y is not None:
+            suspect = self._recent_good[-1]
+            finding = self.auditor.audit_input(self, suspect, observed_y=y)
+            if finding:
+                self.auditor.apply(self, finding)
+                self._log("audit_unlearn", disconnect=finding.disconnect_at)
         score = self.gate.score(x)
         self._recent_raw.append(np.asarray(x).ravel().copy())
         if len(self._recent_raw) > 20:
@@ -393,13 +400,6 @@ class NoiseSeparatedSystem:
                 self._chaos_promotions += 1
             self._check_demotions(x, y)
             self._revalidate_wisdom()
-
-        if self._step % self.audit_every == 0 and self._recent_good and y is not None:
-            suspect = self._recent_good[-1]
-            finding = self.auditor.audit_input(self, suspect, observed_y=y)
-            if finding:
-                self.auditor.apply(self, finding)
-                self._log("audit_unlearn", disconnect=finding.disconnect_at)
 
         return "thought"
 
