@@ -8,11 +8,11 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Surgical unlearn. Trail now records before	o after strength/confidence for the exact knowledge and wisdom items that were weakened, plus recurrence count.
+Surgical unlearn with before	o after values and recurrence count.
 
 ## Generative blender
 
-Confirmed hypotheses raise a bonus on GMM / latent-residual weights. Bonus decays.
+Confirmed hypotheses raise a bonus on GMM / latent-residual weights.
 
 ## Calibration
 
@@ -20,18 +20,21 @@ Thought temperature scaling + Wisdom confidence reliability.
 
 ## Chaos probing
 
-Threshold proximity + **recency-weighted** similarity to recent good inputs (newer goods count more).
-
-## Persistence
-
-```bash
-python tests/test_persistence.py
-```
+Threshold proximity + recency-weighted similarity to good inputs.
 
 ## Comparative evaluation
 
 ```bash
 python benchmarks/comparative.py
+```
+
+Tracks mean error, residual-noise rate, and unlearn count across seeds and noise levels.
+Exits non-zero if the small filtered system under-performs on accuracy or residual-noise rate exceeds the guard.
+
+## Persistence
+
+```bash
+python tests/test_persistence.py
 ```
 
 ## Run
