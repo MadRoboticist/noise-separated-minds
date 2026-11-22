@@ -655,7 +655,7 @@ class NoiseSeparatedSystem:
         raw = {}
         r = self.reactive.lookup(x)
         if r is not None:
-            raw["reactive"] = float(r)
+            raw["reactive"] = float(r[0] if isinstance(r, tuple) else r)
         t = self.trauma.lookup(x)
         if t is not None:
             raw["trauma"] = float(t)
