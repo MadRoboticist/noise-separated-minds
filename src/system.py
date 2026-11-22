@@ -492,16 +492,37 @@ class NoiseSeparatedSystem:
 
 
     def _nudge_graph(self, x, y, pred):
-        """Nudge edges that fed the prediction based on residual."""
+        """Nudge every edge by residual size, weighted by its contribution.
+        Good residual strengthens used edges; large residual weakens them.
+        Magnitude scales with the error so a small miss and a large miss
+        are not treated the same.
+        """
         if pred is None or y is None:
             return
         err = abs(float(pred) - float(y))
-        # Small step: good prediction strengthens used edges, bad weakens them
-        step = 0.01 if err < self.demote_error_tol else -0.005
+        # Scale in [-0.02, +0.02] based on residual vs tolerance
+        tol = max(self.demote_error_tol, 1e-6)
+        signed = float(np.clip(1.0 - err / tol, -1.0, 1.0))
+        step = 0.02 * signed
+
+        # Credit: edges into output are nudged proportional to their weight
+        # (higher weight = more responsibility for the residual)
         for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
             w = self.graph.weight(src, "output")
-            if w > 0:
-                self.graph.set_weight(src, "output", max(0.0, min(1.0, w + step * w)))
+            if w > 0.01:
+                delta = step * w
+                self.graph.set_weight(src, "output", max(0.0, min(1.0, w + delta)))
+
+        # Internal edges: nudge the ones that feed nodes which themselves
+        # had non-trivial weight into the output
+        for dst in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
+            dst_w = self.graph.weight(dst, "output")
+            if dst_w < 0.05:
+                continue
+            for src, w in list(self.graph.informed_by(dst).items()):
+                if w > 0.01 and src != "clerk":
+                    delta = step * w * dst_w
+                    self.graph.set_weight(src, dst, max(0.0, min(1.0, w + delta)))
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
