@@ -28,7 +28,7 @@ class EdgeLQR:
         if self._last_w is not None and self._last_err is not None:
             dw = w - self._last_w
             de = error - self._last_err
-            if np.linalg.norm(dw) > 1e-6:
+            if np.linalg.norm(dw) > 1e-8:
                 self._hist_dw.append(dw)
                 self._hist_de.append(de)
                 if len(self._hist_dw) > self.horizon:

@@ -625,10 +625,17 @@ class NoiseSeparatedSystem:
                     p.lr = float(np.clip(p.lr + 0.5 * dw.get("lr_linear", 0.0), 0.001, 0.2))
 
         # Observe AFTER the update so dw matches what was applied
-        ctrl_after = dict(ctrl)
+        ctrl_after = {}
         for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
             ctrl_after[f"{src}->output"] = self.graph.weight(src, "output")
+        for src, dst in [("knowledge", "thought"), ("wisdom", "thought"),
+                         ("trauma", "thought"), ("thought", "knowledge"),
+                         ("output", "knowledge"), ("knowledge", "reactive"),
+                         ("output", "reactive"), ("knowledge", "wisdom"),
+                         ("chaos", "wisdom"), ("trauma", "wisdom")]:
+            ctrl_after[f"{src}->{dst}"] = self.graph.weight(src, dst)
         ctrl_after["fb_gain"] = self.fb_gain
+        ctrl_after["lr_linear"] = ctrl.get("lr_linear", 0.05)
         ctrl_after["lr_feedback"] = self.feedback.lr
         ctrl_after["lr_next"] = self.next_input.lr
         self.edge_lqr.observe(ctrl_after, err)
