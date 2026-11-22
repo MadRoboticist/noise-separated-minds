@@ -465,3 +465,19 @@ class NoiseSeparatedSystem:
             "temperature": round(self.temperature, 3),
             "step": self._step,
         }
+
+    def observe_context(self, context, y=None):
+        """Accept numeric, string, categorical, or mixed context. Encodes then observes."""
+        if not hasattr(self, "encoder"):
+            from .encoder import ContextEncoder
+            self.encoder = ContextEncoder(dim=32)
+        x = self.encoder.encode(context)
+        return self.observe(x, y)
+
+    def predict_context(self, context):
+        """Encode then predict."""
+        if not hasattr(self, "encoder"):
+            from .encoder import ContextEncoder
+            self.encoder = ContextEncoder(dim=32)
+        x = self.encoder.encode(context)
+        return self.predict(x)
