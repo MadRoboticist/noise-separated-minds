@@ -81,7 +81,7 @@ class NoiseSeparatedSystem:
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
         self.fade_rate = 0.01
-        self.bypass_dist = 0.15  # auditor sets how close inputs must be to skip the gate
+        self.linear_lr = 0.02  # auditor sets the linear perspective learning rate
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())

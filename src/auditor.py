@@ -153,10 +153,13 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradiction on a bypassed stream -> the bypass was too loose.
-        # Tighten it. Recovers when findings stop.
-        if hasattr(clerk, "bypass_dist"):
-            clerk.bypass_dist = max(0.02, clerk.bypass_dist * 0.95)
+        # Contradiction -> the linear fallback absorbed a bad value.
+        # Slow its learning. Recovers when findings stop.
+        if hasattr(clerk, "linear_lr"):
+            clerk.linear_lr = max(0.001, clerk.linear_lr * 0.9)
+            for p in clerk.thought.perspectives:
+                if hasattr(p, "lr"):
+                    p.lr = clerk.linear_lr
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
