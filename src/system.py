@@ -316,6 +316,12 @@ class NoiseSeparatedSystem:
         hits_needed = max(2, self.promote_hits - (1 if hyp_score > 0.5 else 0))
         key = self._trace_key(x)
 
+        # Always land structured repeats in Knowledge first
+        if existing is not None and existing["hits"] >= hits_needed and score >= self.promote_score:
+            stored_y = y if y is not None else existing.get("output")
+            self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
+            self._record(x, {"kind": "to_knowledge", "y": stored_y, **context})
+
         # --- Muscle memory (Reactive): pure repetition OR trauma ---
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= max(2, hits_needed - 1) and score >= self.promote_score
@@ -323,7 +329,7 @@ class NoiseSeparatedSystem:
             if high_repetition or trauma:
                 self.reactive.store(x, y)
                 self._record(x, {"kind": "muscle_memory", "via": "trauma" if trauma else "repetition", **context})
-                # Pure muscle memory does not become Wisdom
+                # Pure muscle memory does not become Wisdom, but Knowledge already has it
                 if high_repetition and self._early_disagreement[self._coarse_key(x)] < 2:
                     return "muscle_memory"
 
