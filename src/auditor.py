@@ -153,13 +153,11 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        if finding.disconnect_at == "prediction" and hasattr(clerk, "reactive_conf_bar"):
-            via = str(finding.via or "")
-            if "reactive" in via:
-                clerk.reactive_conf_bar = min(0.999, clerk.reactive_conf_bar + 0.005)
-            else:
-                # reactive was not the problem; ease the bar slightly
-                clerk.reactive_conf_bar = max(0.8, clerk.reactive_conf_bar - 0.002)
+        # The store that was contradicted should be trusted less.
+        if finding.disconnect_at == "promoted_wisdom" and hasattr(clerk, "wisdom_use_n"):
+            clerk.wisdom_use_n = min(400, clerk.wisdom_use_n + 10)
+        elif finding.disconnect_at == "to_knowledge" and hasattr(clerk, "promote_hits"):
+            clerk.promote_hits = min(20, clerk.promote_hits + 1)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:

@@ -76,6 +76,7 @@ class NoiseSeparatedSystem:
         self.gate_bypass = False
         self.tol_scale = 1.0
         self.reactive_conf_bar = 0.98
+        self.wisdom_use_n = 180
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -662,7 +663,7 @@ class NoiseSeparatedSystem:
                 if e.x.shape == x_arr.shape and np.linalg.norm(e.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
                     w_entry = e
                     break
-            if w_entry is not None and w_entry.confidence >= 2.9 and w_entry.n >= 180:
+            if w_entry is not None and w_entry.confidence >= 2.9 and w_entry.n >= self.wisdom_use_n:
                 pred = raw["wisdom"]
                 via = "thought:wisdom"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
