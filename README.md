@@ -2,13 +2,13 @@
 
 Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
-## Auditor (procedural)
+## Auditor
 
-Works only with the file clerk.
-- The clerk records a short trace of every routing, promotion, and prediction.
-- The auditor is given a suspect input and its observed outcome.
-- It walks the trace backward until it finds the disconnect (bad prediction, contradicted promotion, mis-routed chaos, etc.).
-- It then asks the clerk to re-file (demote, weaken knowledge/wisdom, force back to Thought).
+Procedural and file-clerk-only. Its job is to **disconnect irrational behavior from good inputs**.
+- Only examines inputs the gate already scored as structured.
+- Walks the trace of that input backward.
+- Detects irrational acts: good input sent to chaos, wildly wrong prediction, promotion later contradicted.
+- Severs the bad behavior (demote reactive, weaken knowledge/wisdom) and forces the good input back into Thought for clean re-filing.
 - Never touches the minds directly.
 
 ## Generative integration
@@ -23,15 +23,10 @@ Time-gap before Wisdom, re-validation, confidence checks.
 
 Active probing + promotion budget.
 
-## Evaluation
-
-```bash
-python benchmarks/eval_depth.py
-```
-
 ## Run
 
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
+python benchmarks/eval_depth.py
 ```
