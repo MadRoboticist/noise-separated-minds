@@ -81,7 +81,7 @@ class NoiseSeparatedSystem:
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
         self.fade_rate = 0.01
-        self.quarantine_steps = 5  # auditor sets how long a contradicted entry is distrusted
+        self.outlier_cap = 3.0  # auditor sets how many stds an observation can move the mean
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())

@@ -153,15 +153,12 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Quarantine the contradicted entry so it is not used for a while.
-        # More contradictions -> longer quarantine. Capped so it recovers.
-        if hasattr(clerk, "quarantine_steps"):
-            clerk.quarantine_steps = min(40, clerk.quarantine_steps + 2)
-            # Mark the nearest knowledge item as quarantined
-            if hasattr(finding, "distance") and finding.distance is not None:
-                for item in clerk.knowledge.items:
-                    clerk._quarantine[id(item)] = clerk._step + clerk.quarantine_steps
-                    break
+        # Contradiction means an outlier moved the mean. Tighten the cap
+        # so the next outlier moves it less. Recovers slowly.
+        if hasattr(clerk, "outlier_cap"):
+            clerk.outlier_cap = max(0.5, clerk.outlier_cap * 0.9)
+            for item in clerk.knowledge.items:
+                item._outlier_cap = clerk.outlier_cap
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
