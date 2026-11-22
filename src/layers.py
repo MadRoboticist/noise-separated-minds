@@ -144,7 +144,7 @@ class WisdomLayer:
                 return
         self.entries.append(WisdomEntry(x, y, confidence, step))
 
-    def lookup(self, x: np.ndarray, tol: float = 0.1) -> Optional[Any]:
+    def lookup(self, x: np.ndarray, tol: float = 0.5) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         for e in self.entries:
             if e.x.shape == x.shape and np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
