@@ -13,10 +13,11 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Thought ensemble
 
-Perspectives: local weighted, nn (k=1/3/5), online linear, mixture, wider local.
-- Blender uses accuracy × inverse uncertainty
-- Perspectives with sustained high error are auto-disabled and can recover
-- Uncertainty includes both local distance and cross-perspective disagreement
+Perspectives: local weighted, nn (k=1/3/5), online linear, residual generative, wider local.
+- Residual generative perspective tracks local mean + residual variance and can draw samples.
+- Blender uses accuracy × inverse uncertainty.
+- Perspectives with sustained high error are auto-disabled and can recover; events are logged (`mind.events`).
+- Uncertainty combines local distance and cross-perspective disagreement.
 
 ## Persistence and scale
 
