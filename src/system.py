@@ -568,91 +568,6 @@ class NoiseSeparatedSystem:
             return 0.5
         return float(np.clip(np.mean(self._input_err_window[-20:]), 0.0, 2.0)) / 2.0
 
-    def _nudge_graph(self, x, y, pred):
-        """Nudge every edge by residual size, weighted by its contribution.
-        Good residual strengthens used edges; large residual weakens them.
-        Magnitude scales with the error so a small miss and a large miss
-        are not treated the same.
-        """
-        if pred is None or y is None:
-            return
-        err = abs(float(pred) - float(y))
-        # Scale in [-0.02, +0.02] based on residual vs tolerance
-        tol = max(self.demote_error_tol, 1e-6)
-        signed = float(np.clip(1.0 - err / tol, -1.0, 1.0))
-        # High input uncertainty -> smaller graph steps (dynamics unreliable)
-        scale = 1.0 - 0.7 * self._input_uncertainty()
-        step = 0.02 * signed * scale
-
-        # Full control vector for the LQR
-        ctrl = {
-            "thought->output": self.graph.weight("thought", "output"),
-            "knowledge->output": self.graph.weight("knowledge", "output"),
-            "reactive->output": self.graph.weight("reactive", "output"),
-            "wisdom->output": self.graph.weight("wisdom", "output"),
-            "fb_gain": self.fb_gain,
-        }
-        # Reset only if we were confident and error rose sharply
-        if self.edge_lqr.confident() and len(self._err_window) >= 20:
-            recent = np.mean(self._err_window[-10:])
-            older = np.mean(self._err_window[-20:-10])
-            if older > 0 and recent > 1.8 * older:
-                self.edge_lqr.reset()
-                self._log("lqr_reset")
-
-        # Exploration decays so we stop injecting noise once identified
-        # LQR disabled: identification was real but the steps increased error
-        explore_amp = 0.0
-        use_lqr = False
-        dw = {k: 0.0 for k in ctrl}
-
-        # Excite one control per step so the effect is identifiable
-        names = self.edge_lqr.names
-        excite_key = names[self._excite_idx % len(names)]
-        self._excite_idx += 1
-        # Direct residual gradient on output edges.
-        # Lower error -> strengthen the edges that were used; higher -> weaken.
-        for src in ("thought", "knowledge", "reactive", "wisdom"):
-            w = self.graph.weight(src, "output")
-            if w > 0.01 or src == "thought":
-                delta = step * 0.5
-                self.graph.set_weight_raw(src, "output", max(0.0, min(1.0, w + delta)))
-        self.graph.normalize()
-        # Feedback gain: raise it when residual is small, lower when large
-        self.fb_gain = float(np.clip(self.fb_gain + 0.3 * step, 0.0, 0.5))
-
-        # Scalar controls
-        self.fb_gain = float(np.clip(self.fb_gain + 0.5 * dw.get("fb_gain", 0.0), 0.0, 1.0))
-        self.feedback.lr = float(np.clip(self.feedback.lr + 0.5 * dw.get("lr_feedback", 0.0), 0.001, 0.2))
-        if self.next_input is not None:
-            self.next_input.lr = float(np.clip(self.next_input.lr + 0.5 * dw.get("lr_next", 0.0), 0.001, 0.2))
-        # Thought linear lr lives on the perspectives
-        if hasattr(self.thought, "mind"):
-            for p in self.thought.mind.perspectives:
-                if hasattr(p, "lr"):
-                    p.lr = float(np.clip(p.lr + 0.5 * dw.get("lr_linear", 0.0), 0.001, 0.2))
-
-        # Observe AFTER the update so dw matches what was applied
-        ctrl_after = {
-            "thought->output": self.graph.weight("thought", "output"),
-            "knowledge->output": self.graph.weight("knowledge", "output"),
-            "reactive->output": self.graph.weight("reactive", "output"),
-            "wisdom->output": self.graph.weight("wisdom", "output"),
-            "fb_gain": self.fb_gain,
-        }
-        self.edge_lqr.observe(ctrl_after, err)
-
-        # Internal edges: nudge the ones that feed nodes which themselves
-        # had non-trivial weight into the output
-        for dst in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
-            dst_w = self.graph.weight(dst, "output")
-            if dst_w < 0.05:
-                continue
-            for src, w in list(self.graph.informed_by(dst).items()):
-                if w > 0.01 and src != "clerk":
-                    delta = step * w * dst_w
-                    self.graph.set_weight(src, dst, max(0.0, min(1.0, w + delta)))
-
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
@@ -688,9 +603,8 @@ class NoiseSeparatedSystem:
             den = (1.0 if raw_val is not None else 0.0)
             for src, w in incoming.items():
                 if src in raw and src != node:
-                    # Chaos and trauma suppress wisdom rather than support it
-                    sign = -1.0 if (node == "wisdom" and src in ("chaos", "trauma")) else 1.0
-                    num += sign * w * raw[src]
+                    # Sign is carried by the edge weight itself
+                    num += w * raw[src]
                     den += w
             return (num / den) if den > 0 else raw_val
 

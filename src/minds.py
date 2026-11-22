@@ -33,7 +33,7 @@ class ReactiveMind:
                 continue
         if len(self.table) >= self.max_entries:
             self.table.pop(next(iter(self.table)))
-        self.table[self._key(x)] = (y, strength)
+        self.table[self._key(x)] = (float(y), strength, 1)
 
     def lookup(self, x: np.ndarray, tol: float = 0.6) -> Optional[Any]:
         exact = self.table.get(self._key(x))
@@ -52,7 +52,7 @@ class ReactiveMind:
                     best_d, best = d, v
             except Exception:
                 continue
-        return best
+        return best[0] if isinstance(best, tuple) else best
 
     def fade(self, rate: float = 0.995, min_strength: float = 0.05):
         """Decay strength; drop entries that fall below min_strength."""
@@ -99,7 +99,7 @@ class ReactiveMind:
                 strength = val[1] if isinstance(val, tuple) else 1.0
                 hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
                 best = max(best, min(1.0, strength / 3.0) * min(1.0, hits / 25.0))
-        return best
+        return best[0] if isinstance(best, tuple) else best
 
 
 class Perspective:
@@ -584,7 +584,7 @@ class TraumaStore:
             d = np.linalg.norm(xi - x)
             if d < best_d:
                 best_d, best = d, y
-        return best
+        return best[0] if isinstance(best, tuple) else best
 
     def _key(self, x):
         return np.asarray(x, dtype=float).ravel().tobytes()
