@@ -38,7 +38,7 @@ class NoiseSeparatedSystem:
             "wisdom->output", "fb_gain",
         ], horizon=30, effort=0.3)
         self._excite_idx = 0
-        self.fb_gain = 0.3  # cascade | blend | thought_consults
+        self.fb_gain = 0.0  # off until it proves it helps  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -589,9 +589,10 @@ class NoiseSeparatedSystem:
                 self._log("lqr_reset")
 
         # Exploration decays so we stop injecting noise once identified
-        explore_amp = 0.008 * np.exp(-self._step / 200.0)
-        use_lqr = self.edge_lqr.confident()
-        dw = self.edge_lqr.step(ctrl, err) if use_lqr else {k: 0.0 for k in ctrl}
+        # LQR disabled: identification was real but the steps increased error
+        explore_amp = 0.0
+        use_lqr = False
+        dw = {k: 0.0 for k in ctrl}
 
         # Excite one control per step so the effect is identifiable
         names = self.edge_lqr.names
@@ -718,10 +719,16 @@ class NoiseSeparatedSystem:
         if hasattr(self, "edge_weights"):
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
+        # Prefer the strongest single source over a diluted blend
+        if "thought" in votes and len(votes) > 1:
+            # Only blend if other votes are close to thought; else use thought
+            others = [v for k, v in votes.items() if k != "thought"]
+            if others and np.mean([abs(v - votes["thought"]) for v in others]) > 0.3:
+                pred = votes["thought"]
+                via = "thought"
+                self._record(x, {"kind": "predict", "pred": pred, "via": via})
+                return pred, via
         pred = self.graph.compute_output(votes)
-        # Only correct when chaos did not vote; otherwise the residual is noise
-        if pred is not None and self.feedback._step > 30 and "chaos" not in votes:
-            pred = float(pred) + self.fb_gain * self.feedback.correct(x)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
