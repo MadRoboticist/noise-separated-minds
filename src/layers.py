@@ -71,6 +71,8 @@ class KnowledgeLayer:
         best = None
         best_d = tol
         for item in self.items:
+            if item.x.shape != x.shape:
+                continue
             d = np.linalg.norm(item.x - x)
             if d < best_d and item.strength > self.min_strength:
                 best_d = d
@@ -119,7 +121,7 @@ class WisdomLayer:
     def lookup(self, x: np.ndarray, tol: float = 0.1) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         for e in self.entries:
-            if np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
+            if e.x.shape == x.shape and np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
                 return e.y
         return None
 
