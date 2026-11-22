@@ -384,7 +384,7 @@ class NoiseSeparatedSystem:
 
         # --- Muscle memory (Reactive): requires many repetitions (slow to form) ---
         # Thought is immediate; reactive is earned through sustained repetition.
-        reactive_hits_needed = max(15, hits_needed * 5)
+        reactive_hits_needed = max(80, hits_needed * 20)
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
@@ -728,14 +728,17 @@ class NoiseSeparatedSystem:
                 self.graph.set_weight(name, "output", w)
         # Original intent: the graph blends the minds.
         # Prefer a permanence layer when it has a confident match.
+        # Reactive is the short path, but only when confidence is very high
+        if "reactive" in raw:
+            conf = self.reactive.confidence(x) if hasattr(self.reactive, "confidence") else 0.0
+            if conf >= 0.9:
+                pred = raw["reactive"]
+                via = "reactive"
+                self._record(x, {"kind": "predict", "pred": pred, "via": via})
+                return pred, via
         if "wisdom" in raw:
             pred = raw["wisdom"]
             via = "wisdom"
-            self._record(x, {"kind": "predict", "pred": pred, "via": via})
-            return pred, via
-        if "reactive" in raw:
-            pred = raw["reactive"]
-            via = "reactive"
             self._record(x, {"kind": "predict", "pred": pred, "via": via})
             return pred, via
         if "knowledge" in raw:

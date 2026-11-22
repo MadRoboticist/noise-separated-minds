@@ -541,6 +541,19 @@ class ChaosPile:
         return self.n
 
 
+    def confidence(self, x) -> float:
+        """High only after many hits on a close match."""
+        x = np.asarray(x, dtype=float).ravel()
+        best = 0.0
+        for item in self.items:
+            if item.x.shape != x.shape:
+                continue
+            d = np.linalg.norm(item.x - x)
+            if d < 0.5:
+                # strength saturates; require many hits for high confidence
+                best = max(best, min(1.0, item.strength / 5.0) * min(1.0, item.hits / 30.0))
+        return best
+
 class TraumaStore:
     """Fast-forming responses from high-error or shocking events.
     These are the primary targets for the auditor.
