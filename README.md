@@ -1,30 +1,26 @@
 # Noise-Separated Minds
 
-Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales: Thought, Knowledge, and Wisdom.
+Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
 ## Core Idea
 
 1. **Randomness Gate**: Reject pure noise before it can skew any distribution.
 2. **Thought**: Short-term figuring (analytical ensemble). Can be lost.
-3. **Knowledge**: Medium-term patterns. Can fade with disuse.
+3. **Knowledge**: Medium-term patterns. Can fade or be weakened.
 4. **Wisdom**: Long-term invariants. Only grows.
-5. **Reactive**: Deterministic functions promoted from strong knowledge/wisdom.
-6. **Chaos**: Residual pure randomness (no model).
+5. **Reactive**: Deterministic functions.
+6. **Chaos**: Residual pure randomness, with re-entry path.
+
+## Feedback loops
+
+- Promotion: consistent Thought → Knowledge → Wisdom + Reactive
+- Demotion: high prediction error weakens Knowledge and removes Reactive entries, forcing return to Thought
+- Chaos re-entry: previously rejected items that later score as structured are pulled back into Thought
+- Exploratory routing: small probability of sending structured inputs to Chaos
 
 ## Why
 
-Pure randomness cannot be absorbed into a pdf without skewing it. Filter first. Then let thoughts be disposable, knowledge provisional, and wisdom cumulative.
-
-## Current Implementation
-
-- Randomness gate
-- Thought layer: 7-perspective analytical ensemble (toggleable, blended)
-- Knowledge layer: strength that fades; can be revised
-- Wisdom layer: append-only
-- Reactive mind: exact deterministic table
-- Chaos pile
-- Promotion path: Thought → Knowledge → Wisdom (+ Reactive)
-- Demo, basic tests, ensemble benchmark
+Pure randomness cannot be absorbed into a pdf without skewing it. Filter first. Then allow thoughts to be disposable, knowledge to fade or be contradicted, and wisdom to accumulate, while keeping reverse paths open.
 
 ## Run
 
@@ -37,4 +33,4 @@ python benchmarks/ensemble_search.py
 
 ## Status
 
-Prototype with Thought / Knowledge / Wisdom consolidation. Wisdom is permanent; Knowledge fades; Thought is the live ensemble.
+Prototype with bidirectional consolidation and chaos re-entry.
