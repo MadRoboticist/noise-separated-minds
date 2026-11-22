@@ -87,10 +87,13 @@ class Perspective:
         self.max_obs = max_obs
         self.xs: List[np.ndarray] = []
         self.ys: List[Any] = []
+        self._store_obs = True
         self.recent_errors: List[float] = []
         self.generative_bonus = 1.0  # can be raised by confirmed hypotheses
 
     def observe(self, x: np.ndarray, y: Any):
+        if not self._store_obs:
+            return
         self.xs.append(np.asarray(x, dtype=float).ravel())
         self.ys.append(y)
         if len(self.xs) > self.max_obs:
@@ -180,6 +183,7 @@ class NearestNeighborPerspective(Perspective):
 class OnlineLinearPerspective(Perspective):
     def __init__(self, lr: float = 0.05, reg: float = 1e-3, max_obs: int = 2_000):
         super().__init__("online_linear", max_obs)
+        self._store_obs = False
         self.lr = lr
         self.reg = reg
         self.w = None
@@ -322,6 +326,7 @@ class TinyMLPPerspective(Perspective):
     """Small online MLP perspective."""
     def __init__(self, hidden=16, lr=0.01, max_obs=2_000):
         super().__init__("mlp", max_obs)
+        self._store_obs = False
         self.hidden = hidden
         self.lr = lr
         self.W1 = None
