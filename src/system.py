@@ -35,13 +35,9 @@ class NoiseSeparatedSystem:
         self.graph = MindGraph()
         self.edge_lqr = EdgeLQR([
             "thought->output", "knowledge->output", "reactive->output",
-            "wisdom->output", "trauma->output", "chaos->output",
-            "knowledge->thought", "wisdom->thought", "trauma->thought",
-            "thought->knowledge", "output->knowledge",
-            "knowledge->reactive", "output->reactive",
-            "knowledge->wisdom", "chaos->wisdom", "trauma->wisdom",
-            "fb_gain", "lr_linear", "lr_feedback", "lr_next",
-        ])
+            "wisdom->output", "fb_gain",
+        ], horizon=30, effort=0.3)
+        self._excite_idx = 0
         self.fb_gain = 0.3  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
@@ -577,19 +573,13 @@ class NoiseSeparatedSystem:
         step = 0.02 * signed * scale
 
         # Full control vector for the LQR
-        ctrl = {}
-        for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
-            ctrl[f"{src}->output"] = self.graph.weight(src, "output")
-        for src, dst in [("knowledge", "thought"), ("wisdom", "thought"),
-                         ("trauma", "thought"), ("thought", "knowledge"),
-                         ("output", "knowledge"), ("knowledge", "reactive"),
-                         ("output", "reactive"), ("knowledge", "wisdom"),
-                         ("chaos", "wisdom"), ("trauma", "wisdom")]:
-            ctrl[f"{src}->{dst}"] = self.graph.weight(src, dst)
-        ctrl["fb_gain"] = self.fb_gain
-        ctrl["lr_linear"] = getattr(self.thought.mind, "lr", 0.05) if hasattr(self.thought, "mind") else 0.05
-        ctrl["lr_feedback"] = self.feedback.lr
-        ctrl["lr_next"] = self.next_input.lr
+        ctrl = {
+            "thought->output": self.graph.weight("thought", "output"),
+            "knowledge->output": self.graph.weight("knowledge", "output"),
+            "reactive->output": self.graph.weight("reactive", "output"),
+            "wisdom->output": self.graph.weight("wisdom", "output"),
+            "fb_gain": self.fb_gain,
+        }
         # Reset only if we were confident and error rose sharply
         if self.edge_lqr.confident() and len(self._err_window) >= 20:
             recent = np.mean(self._err_window[-10:])
@@ -603,16 +593,23 @@ class NoiseSeparatedSystem:
         use_lqr = self.edge_lqr.confident()
         dw = self.edge_lqr.step(ctrl, err) if use_lqr else {k: 0.0 for k in ctrl}
 
+        # Excite one control per step so the effect is identifiable
+        names = self.edge_lqr.names
+        excite_key = names[self._excite_idx % len(names)]
+        self._excite_idx += 1
         for key, delta in dw.items():
             if "->" not in key:
                 continue
             src, dst = key.split("->")
             w = self.graph.weight(src, dst)
-            explore = explore_amp * np.sin(0.3 * self._step + (hash(key) % 5))
+            explore = explore_amp if key == excite_key else 0.0
             d = (0.5 * delta if use_lqr else 0.0) + explore
             if abs(d) > 1e-6:
                 self.graph.set_weight_raw(src, dst, max(0.0, min(1.0, w + d)))
         self.graph.normalize()
+        # Scalar excitation
+        if excite_key == "fb_gain":
+            self.fb_gain = float(np.clip(self.fb_gain + explore_amp, 0.0, 1.0))
 
         # Scalar controls
         self.fb_gain = float(np.clip(self.fb_gain + 0.5 * dw.get("fb_gain", 0.0), 0.0, 1.0))
@@ -625,19 +622,13 @@ class NoiseSeparatedSystem:
                     p.lr = float(np.clip(p.lr + 0.5 * dw.get("lr_linear", 0.0), 0.001, 0.2))
 
         # Observe AFTER the update so dw matches what was applied
-        ctrl_after = {}
-        for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
-            ctrl_after[f"{src}->output"] = self.graph.weight(src, "output")
-        for src, dst in [("knowledge", "thought"), ("wisdom", "thought"),
-                         ("trauma", "thought"), ("thought", "knowledge"),
-                         ("output", "knowledge"), ("knowledge", "reactive"),
-                         ("output", "reactive"), ("knowledge", "wisdom"),
-                         ("chaos", "wisdom"), ("trauma", "wisdom")]:
-            ctrl_after[f"{src}->{dst}"] = self.graph.weight(src, dst)
-        ctrl_after["fb_gain"] = self.fb_gain
-        ctrl_after["lr_linear"] = ctrl.get("lr_linear", 0.05)
-        ctrl_after["lr_feedback"] = self.feedback.lr
-        ctrl_after["lr_next"] = self.next_input.lr
+        ctrl_after = {
+            "thought->output": self.graph.weight("thought", "output"),
+            "knowledge->output": self.graph.weight("knowledge", "output"),
+            "reactive->output": self.graph.weight("reactive", "output"),
+            "wisdom->output": self.graph.weight("wisdom", "output"),
+            "fb_gain": self.fb_gain,
+        }
         self.edge_lqr.observe(ctrl_after, err)
 
         # Internal edges: nudge the ones that feed nodes which themselves
