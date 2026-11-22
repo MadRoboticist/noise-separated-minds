@@ -4,19 +4,26 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Core Idea
 
-1. **Randomness Gate**: Multi-test detector (spectral flatness, histogram entropy, autocorrelation, difference entropy, runs) that rejects pure noise.
-2. **Thought**: Short-term figuring (analytical ensemble). Can be lost.
-3. **Knowledge**: Medium-term patterns. Can fade or be weakened.
-4. **Wisdom**: Long-term. Count only grows; confidence is checked and can fall.
-5. **Reactive**: Deterministic functions.
-6. **Chaos**: Residual pure randomness, with re-entry path.
+1. **Randomness Gate**: Multi-test detector that rejects pure noise.
+2. **Thought**: Short-term figuring (analytical ensemble). Bounded and clearable.
+3. **Knowledge**: Medium-term. Can fade or be weakened.
+4. **Wisdom**: Long-term. Count only grows; confidence can fall.
+5. **Reactive**: Deterministic functions (bounded).
+6. **Chaos**: Residual randomness (bounded), with re-entry.
+
+## Persistence and scale
+
+- `system.save(path)` / `NoiseSeparatedSystem.load(path)` (pickle)
+- Observation lists inside Thought capped (`max_obs`, default 2000)
+- Chaos pile capped (`max_chaos`, default 5000)
+- Reactive table capped
 
 ## Feedback loops
 
-- Promotion requires hit-count, structure score, **and cross-perspective agreement**
-- Demotion on high error
-- Wisdom confidence checked on every matching observation (never deleted)
-- Adaptive exploration rate
+- Agreement-gated promotion
+- Demotion on error
+- Wisdom confidence checks
+- Adaptive exploration
 - Chaos re-entry
 - Accuracy-weighted blender
 
@@ -25,10 +32,11 @@ Unsupervised architecture that separates pure randomness from structured signal,
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
+python tests/test_persistence.py
 python tests/test_gate.py
 python tests/test_layers.py
 ```
 
 ## Status
 
-Prototype with robust multi-test randomness gate, agreement-gated promotion, adaptive exploration, and asymmetry tests.
+Prototype with persistence, bounded memory, robust gate, and full feedback loops.
