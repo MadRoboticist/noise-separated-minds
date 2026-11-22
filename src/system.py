@@ -384,7 +384,7 @@ class NoiseSeparatedSystem:
 
         # --- Muscle memory (Reactive): requires many repetitions (slow to form) ---
         # Thought is immediate; reactive is earned through sustained repetition.
-        reactive_hits_needed = max(200, hits_needed * 50)
+        reactive_hits_needed = max(15, hits_needed * 5)
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
@@ -426,8 +426,8 @@ class NoiseSeparatedSystem:
                 r_ok = (rv is None) or (abs(float(rv) - float(stored_y)) < 0.3)
                 # Wisdom is the hardest: many hits, knowledge already strong,
                 # and the pattern has been seen across a long span.
-                sustained = existing["hits"] >= max(400, hits_needed * 100)
-                know_strong = know_item is not None and know_item.strength >= 3.0
+                sustained = existing["hits"] >= max(25, hits_needed * 8)
+                know_strong = know_item is not None and know_item.strength >= 1.2
                 layers_agree = t_ok and k_ok and r_ok and sustained and age_ok and know_strong
             if layers_agree:
                 conf = know_item.strength if know_item else 1.0
