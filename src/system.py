@@ -1,4 +1,4 @@
-"""File clerk. Auditor severs and unlearns reinforcements."""
+"""File clerk with surgical unlearn, calibration, and hypothesis-auditor coupling."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -63,6 +63,8 @@ class NoiseSeparatedSystem:
         self._traces: Dict[str, List[Dict[str, Any]]] = {}
         self._recent_good: List[np.ndarray] = []
         self.event_log: List[Dict[str, Any]] = []
+        # Simple calibration: track (predicted_uncertainty_bin, was_correct)
+        self._calib: List[tuple] = []
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -86,30 +88,35 @@ class NoiseSeparatedSystem:
         return self._traces.get(key, [])
 
     def unlearn(self, key: str):
-        """Remove locks and reinforcements that supported the irrational behavior."""
-        # 1. Drop reactive locks
-        for k in list(self.reactive.table.keys())[:8]:
+        """Surgical unlearn: only items matching the key where possible."""
+        # Reactive: drop only keys that match the trace key pattern (best-effort)
+        to_drop = [k for k in list(self.reactive.table.keys()) if key[:12] in str(k)]
+        for k in to_drop[:5]:
             self.reactive.table.pop(k, None)
 
-        # 2. Heavily weaken knowledge and wisdom
-        self.knowledge.fade()
-        self.knowledge.fade()
+        # Knowledge: weaken only matching items
+        for item in self.knowledge.items:
+            if self._trace_key(item.x) == key:
+                item.strength *= 0.3
+
+        # Wisdom: reduce confidence only on matching entries
         for e in self.wisdom.entries:
-            e.confidence = max(0.0, e.confidence - 0.5)
+            if self._trace_key(e.x) == key:
+                e.confidence = max(0.0, e.confidence - 0.6)
 
-        # 3. Deactivate supporting hypotheses
+        # Hypotheses: deactivate those matching the key
         for h in self.hypotheses.hypotheses:
-            if h.active:
+            if h.active and self._trace_key(h.x) == key:
                 h.active = False
-                h.rejections += 2
+                h.rejections += 3
 
-        # 4. Clear the short-term buffer entries that may have reinforced hits
+        # Short-term buffer
         self.short_term.buffer = [
             b for b in self.short_term.buffer
             if self._trace_key(b.get("x", np.zeros(1))) != key
         ]
 
-        self._log("unlearn", key=key)
+        self._log("unlearn_surgical", key=key)
 
     def refile_to_thought(self, key: str):
         for x in reversed(self._recent_good):
@@ -117,6 +124,21 @@ class NoiseSeparatedSystem:
                 self.thought.observe(x, y=None)
                 self._record(x, {"kind": "refiled_to_thought"})
                 return
+
+    def record_calibration(self, uncertainty: float, correct: bool):
+        bin_id = int(np.clip(uncertainty * 5, 0, 4))
+        self._calib.append((bin_id, correct))
+        if len(self._calib) > 500:
+            self._calib = self._calib[-500:]
+
+    def calibration_summary(self) -> dict:
+        if not self._calib:
+            return {}
+        from collections import defaultdict
+        bins = defaultdict(list)
+        for b, c in self._calib:
+            bins[b].append(c)
+        return {b: float(np.mean(v)) for b, v in sorted(bins.items())}
 
     def save(self, path: str):
         _save(self, path)
@@ -156,6 +178,15 @@ class NoiseSeparatedSystem:
         active_names = self.thought.mind.active_names
         self.hypotheses.observe(x, y, self._step)
 
+        # Check for contradicted hypotheses — treat as irrational signal
+        if y is not None:
+            for h in self.hypotheses.hypotheses:
+                if not h.active and h.rejections >= 2 and self._trace_key(h.x) == self._trace_key(x):
+                    finding = self.auditor.audit_input(self, x, observed_y=y)
+                    if finding:
+                        self.auditor.apply(self, finding)
+                        self._log("hypothesis_triggered_audit")
+
         if y is not None:
             if not self.wisdom.check(x, y, tol=self.demote_error_tol, step=self._step):
                 self.thought.observe(x, y)
@@ -163,6 +194,13 @@ class NoiseSeparatedSystem:
 
         agreement = self.thought.mind.agreement(x) if len(self.thought) > 2 else 0.5
         self._adapt_exploration(agreement)
+
+        # Calibration sample
+        if y is not None and len(self.thought) > 3:
+            unc = self.thought.uncertainty(x)
+            pred = self.thought.sample(x)
+            if pred is not None:
+                self.record_calibration(unc, abs(float(pred) - float(y)) < self.demote_error_tol)
 
         thr = self.gate.threshold
         if not is_noise:
@@ -303,5 +341,6 @@ class NoiseSeparatedSystem:
             "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
             "event_log_len": len(self.event_log),
+            "calibration": self.calibration_summary(),
             "step": self._step,
         }
