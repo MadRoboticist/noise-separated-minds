@@ -149,12 +149,20 @@ class Auditor:
             return
         # Only sever if we have a concrete better observation
         # (the finding already encodes the contradiction)
-        dist = getattr(finding, "distance", None)
-        if dist is not None and hasattr(clerk, "tol_scale"):
-            if dist > 0.5:
-                clerk.tol_scale = max(0.5, clerk.tol_scale * 0.95)
-            elif dist < 0.15:
-                clerk.tol_scale = min(1.5, clerk.tol_scale * 1.02)
+        # If the contradicted prediction came from reactive, raise the bar
+        # so the short path is taken less often. That is where error lives.
+        if finding.disconnect_at == "prediction" and hasattr(clerk, "reactive_conf_bar"):
+            via = ""
+            trace = clerk._traces.get(finding.input_key, [])
+            for e in reversed(trace):
+                if e.get("kind") == "predict":
+                    via = str(e.get("via", ""))
+                    break
+            if "reactive" in via:
+                clerk.reactive_conf_bar = min(0.999, clerk.reactive_conf_bar + 0.005)
+            else:
+                # reactive was not the problem; ease the bar slightly
+                clerk.reactive_conf_bar = max(0.8, clerk.reactive_conf_bar - 0.002)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:

@@ -75,6 +75,7 @@ class NoiseSeparatedSystem:
         self._recent_raw: List[np.ndarray] = []
         self.gate_bypass = False
         self.tol_scale = 1.0
+        self.reactive_conf_bar = 0.98
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
@@ -647,7 +648,7 @@ class NoiseSeparatedSystem:
         # 1. Reaction: short path, only at very high confidence
         if "reactive" in raw:
             conf = self.reactive.confidence(x) if hasattr(self.reactive, "confidence") else 0.0
-            if conf >= 0.98:
+            if conf >= self.reactive_conf_bar:
                 pred = raw["reactive"]
                 via = "reactive"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
