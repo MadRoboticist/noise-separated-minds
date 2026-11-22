@@ -7,7 +7,6 @@ from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, TraumaStore, ChaosPile
 from .mind_graph import MindGraph
-from .edge_lqr import EdgeLQR
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
@@ -31,12 +30,7 @@ class NoiseSeparatedSystem:
         self._prev_x = None
         self.graph_mode = 'blend'
         self.graph = MindGraph()
-        self.edge_lqr = EdgeLQR([
-            "thought->output", "knowledge->output", "reactive->output",
-            "wisdom->output", "fb_gain",
-        ], horizon=30, effort=0.3)
-        self._excite_idx = 0
-        self.fb_gain = 0.0  # off until it proves it helps  # cascade | blend | thought_consults
+          # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -711,15 +705,24 @@ class NoiseSeparatedSystem:
         if hasattr(self, "edge_weights"):
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
-        # Thought is the strongest single predictor on these streams.
-        # Blend only when every other vote is within 0.02 of thought.
-        if "thought" in raw:
-            # Use the raw thought prediction, not the mix-contaminated vote
-            pred = raw["thought"]
-            via = "thought"
+        # Original intent: the graph blends the minds.
+        # Prefer a permanence layer when it has a confident match.
+        if "reactive" in raw:
+            pred = raw["reactive"]
+            via = "reactive"
             self._record(x, {"kind": "predict", "pred": pred, "via": via})
             return pred, via
-        pred = self.graph.compute_output(votes)
+        if "wisdom" in raw:
+            pred = raw["wisdom"]
+            via = "wisdom"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        if "knowledge" in raw:
+            pred = raw["knowledge"]
+            via = "knowledge"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        pred = self.graph.compute_output(votes) if votes else raw.get("thought")
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
