@@ -1,17 +1,21 @@
-"""Analytical ensemble with accuracy tracking and a simple parametric perspective."""
+"""Analytical ensemble with bounded memory and accuracy tracking."""
 
 from typing import Any, Dict, List, Optional
 import numpy as np
 
 
 class ReactiveMind:
-    def __init__(self):
+    def __init__(self, max_entries: int = 10_000):
         self.table: Dict[bytes, Any] = {}
+        self.max_entries = max_entries
 
     def _key(self, x: np.ndarray) -> bytes:
         return np.asarray(x).tobytes()
 
     def store(self, x: np.ndarray, y: Any):
+        if len(self.table) >= self.max_entries:
+            # drop an arbitrary old entry
+            self.table.pop(next(iter(self.table)))
         self.table[self._key(x)] = y
 
     def lookup(self, x: np.ndarray) -> Optional[Any]:
@@ -22,9 +26,10 @@ class ReactiveMind:
 
 
 class Perspective:
-    def __init__(self, name: str):
+    def __init__(self, name: str, max_obs: int = 2_000):
         self.name = name
         self.enabled = True
+        self.max_obs = max_obs
         self.xs: List[np.ndarray] = []
         self.ys: List[Any] = []
         self.recent_errors: List[float] = []
@@ -32,6 +37,10 @@ class Perspective:
     def observe(self, x: np.ndarray, y: Any):
         self.xs.append(np.asarray(x, dtype=float).ravel())
         self.ys.append(y)
+        if len(self.xs) > self.max_obs:
+            # drop oldest
+            self.xs.pop(0)
+            self.ys.pop(0)
 
     def record_error(self, err: float):
         self.recent_errors.append(abs(err))
@@ -41,7 +50,7 @@ class Perspective:
     def accuracy_weight(self) -> float:
         if not self.recent_errors:
             return 1.0
-        return 1.0 / (1.0 + np.mean(self.recent_errors))
+        return 1.0 / (1.0 + float(np.mean(self.recent_errors)))
 
     def predict(self, x: np.ndarray) -> Optional[float]:
         raise NotImplementedError
@@ -56,8 +65,8 @@ class Perspective:
 
 
 class LocalWeightedPerspective(Perspective):
-    def __init__(self, bandwidth: float = 0.5):
-        super().__init__("local_weighted")
+    def __init__(self, bandwidth: float = 0.5, max_obs: int = 2_000):
+        super().__init__("local_weighted", max_obs)
         self.bandwidth = bandwidth
 
     def predict(self, x: np.ndarray) -> Optional[float]:
@@ -79,8 +88,8 @@ class LocalWeightedPerspective(Perspective):
 
 
 class NearestNeighborPerspective(Perspective):
-    def __init__(self, k: int = 1):
-        super().__init__(f"nn_k{k}")
+    def __init__(self, k: int = 1, max_obs: int = 2_000):
+        super().__init__(f"nn_k{k}", max_obs)
         self.k = k
 
     def predict(self, x: np.ndarray) -> Optional[float]:
@@ -94,10 +103,8 @@ class NearestNeighborPerspective(Perspective):
 
 
 class OnlineLinearPerspective(Perspective):
-    """Simple parametric: online ridge regression on raw features."""
-
-    def __init__(self, dim_hint: int = 16, lr: float = 0.05, reg: float = 1e-3):
-        super().__init__("online_linear")
+    def __init__(self, lr: float = 0.05, reg: float = 1e-3, max_obs: int = 2_000):
+        super().__init__("online_linear", max_obs)
         self.lr = lr
         self.reg = reg
         self.w = None
@@ -125,20 +132,19 @@ class OnlineLinearPerspective(Perspective):
 
 
 class AnalyticalMind:
-    def __init__(self):
+    def __init__(self, max_obs: int = 2_000):
         self.perspectives: List[Perspective] = [
-            LocalWeightedPerspective(),
-            NearestNeighborPerspective(k=1),
-            NearestNeighborPerspective(k=3),
-            OnlineLinearPerspective(),
-            LocalWeightedPerspective(bandwidth=1.0),  # wider
-            NearestNeighborPerspective(k=5),
-            OnlineLinearPerspective(lr=0.02),
+            LocalWeightedPerspective(max_obs=max_obs),
+            NearestNeighborPerspective(k=1, max_obs=max_obs),
+            NearestNeighborPerspective(k=3, max_obs=max_obs),
+            OnlineLinearPerspective(max_obs=max_obs),
+            LocalWeightedPerspective(bandwidth=1.0, max_obs=max_obs),
+            NearestNeighborPerspective(k=5, max_obs=max_obs),
+            OnlineLinearPerspective(lr=0.02, max_obs=max_obs),
         ]
-        # rename the second local and second linear for uniqueness
         self.perspectives[4].name = "local_wide"
         self.perspectives[6].name = "online_linear_slow"
-        self.blender_mode = "accuracy"  # accuracy, weighted, greedy, mean
+        self.blender_mode = "accuracy"
 
     def set_enabled(self, names: List[str]):
         for p in self.perspectives:
@@ -151,7 +157,6 @@ class AnalyticalMind:
     def observe(self, x: np.ndarray, y: Optional[Any] = None):
         for p in self.perspectives:
             if p.enabled:
-                # record error before update when possible
                 if y is not None:
                     pred = p.predict(x)
                     if pred is not None:
@@ -162,7 +167,6 @@ class AnalyticalMind:
         return [p for p in self.perspectives if p.enabled]
 
     def agreement(self, x: np.ndarray, tol: float = 0.3) -> float:
-        """Fraction of active perspectives that agree within tol."""
         preds = []
         for p in self._active():
             pr = p.predict(x)
@@ -213,11 +217,14 @@ class AnalyticalMind:
 
 
 class ChaosPile:
-    def __init__(self):
+    def __init__(self, max_rejected: int = 5_000):
         self.rejected: List[np.ndarray] = []
+        self.max_rejected = max_rejected
 
     def reject(self, x: np.ndarray):
         self.rejected.append(np.asarray(x))
+        if len(self.rejected) > self.max_rejected:
+            self.rejected.pop(0)
 
     def sample(self, shape) -> np.ndarray:
         return np.random.randn(*shape)
