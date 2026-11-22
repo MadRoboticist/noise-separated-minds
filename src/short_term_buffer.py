@@ -39,6 +39,9 @@ class ShortTermBuffer:
                 return item
         return None
 
-    def decay(self):
-        """Simple aging: drop lowest-hit items if over capacity (handled by deque)."""
-        pass
+    def decay(self, min_hits: int = 2):
+        """Drop entries that have not been reinforced."""
+        self.buffer = type(self.buffer)(
+            (item for item in self.buffer if item["hits"] >= min_hits),
+            maxlen=self.buffer.maxlen,
+        )

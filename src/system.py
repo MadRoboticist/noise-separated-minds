@@ -53,6 +53,9 @@ class NoiseSeparatedSystem:
         self.audit_every = cfg.audit_every
 
         self._step = 0
+        self._err_window = []
+        self._checkpoint = None
+        self._checkpoint_step = 0
         self._reentries = 0
         self._chaos_promotions = 0
         self._recent_agreements = []
@@ -243,7 +246,12 @@ class NoiseSeparatedSystem:
         self._step += 1
         if y is not None:
             pred, _ = self.predict(x)
+            if pred is not None:
+                self._err_window.append(abs(float(pred) - float(y)))
+                if len(self._err_window) > 100:
+                    self._err_window.pop(0)
             self._nudge_graph(x, y, pred)
+            self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
             suspect = self._recent_good[-1]
@@ -424,6 +432,7 @@ class NoiseSeparatedSystem:
             self.reactive.fade()
             self.trauma.fade()
             self.graph.decay_toward_prior(rate=0.005)
+            self.short_term.decay()
             if self._active_chaos_probe():
                 self._reentries += 1
                 self._chaos_promotions += 1
@@ -490,6 +499,27 @@ class NoiseSeparatedSystem:
             self._log("weaken_knowledge")
 
 
+
+    def _maybe_checkpoint(self):
+        """Every 40 steps, snapshot graph weights. Roll back if error rose."""
+        if self._step - self._checkpoint_step < 40:
+            return
+        recent = self._err_window[-20:] if self._err_window else []
+        mean_err = float(np.mean(recent)) if recent else 0.0
+        if self._checkpoint is None:
+            self._checkpoint = dict(self.graph.edges)
+            self._checkpoint_err = mean_err
+            self._checkpoint_step = self._step
+            return
+        # If error rose more than 50%, restore
+        if self._checkpoint_err > 0 and mean_err > 1.5 * self._checkpoint_err:
+            self.graph.edges = dict(self._checkpoint)
+            self.graph.normalize()
+            self._log("rollback", err=round(mean_err, 3))
+        else:
+            self._checkpoint = dict(self.graph.edges)
+            self._checkpoint_err = mean_err
+        self._checkpoint_step = self._step
 
     def _nudge_graph(self, x, y, pred):
         """Nudge every edge by residual size, weighted by its contribution.

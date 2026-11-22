@@ -198,7 +198,8 @@ class OnlineLinearPerspective(Perspective):
         step = getattr(self, "_step", 0) + 1
         self._step = step
         lr = self.lr / (1.0 + 0.001 * step)
-        self.w += lr * (err * x_aug - self.reg * self.w)
+        delta = lr * (err * x_aug - self.reg * self.w)
+        self.w += np.clip(delta, -1.0, 1.0)
 
     def predict(self, x: np.ndarray) -> Optional[float]:
         if self.w is None:
