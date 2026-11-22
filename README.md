@@ -16,7 +16,8 @@ Unsupervised architecture that separates pure randomness from structured signal,
 - Promotion requires hit-count, structure score, **and cross-perspective agreement**
 - Demotion on high error (Reactive removed, Knowledge weakened)
 - Wisdom confidence checked on every matching observation (never deleted)
-- Chaos re-entry and light exploratory routing
+- **Adaptive exploration**: probability rises when agreement is low or chaos re-entries succeed; falls when the system is confident. Bounded between `explore_min` and `explore_max`.
+- Chaos re-entry
 - Blender uses recent per-perspective accuracy
 
 ## Perspectives inside Thought
@@ -34,4 +35,4 @@ python benchmarks/ensemble_search.py
 
 ## Status
 
-Prototype with agreement-gated promotion, accuracy-weighted blending, parametric perspectives, and asymmetry tests.
+Prototype with agreement-gated promotion, accuracy-weighted blending, adaptive exploration, and asymmetry tests.
