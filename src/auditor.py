@@ -156,7 +156,7 @@ class Auditor:
         # Contradiction -> fade faster so the stale value does not persist.
         # Bounded so entries still form and the spread survives.
         if hasattr(clerk, "fade_rate"):
-            clerk.fade_rate = min(0.05, clerk.fade_rate + 0.002)
+            clerk.fade_rate = min(0.5, clerk.fade_rate + 0.002)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
