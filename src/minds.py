@@ -542,24 +542,6 @@ class ChaosPile:
     def __len__(self):
         return self.n
 
-
-    def confidence(self, x) -> float:
-        """High only after many reinforcements on a close match."""
-        x = np.asarray(x, dtype=float).ravel()
-        best = 0.0
-        for k, val in self.table.items():
-            try:
-                xi = np.frombuffer(k, dtype=float)
-            except Exception:
-                continue
-            if xi.shape != x.shape:
-                continue
-            if np.linalg.norm(xi - x) < 0.6:
-                strength = val[1] if isinstance(val, tuple) else 1.0
-                hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
-                best = max(best, min(1.0, strength / 3.0) * min(1.0, hits / 25.0))
-        return best
-
 class TraumaStore:
     """Fast-forming responses from high-error or shocking events.
     These are the primary targets for the auditor.
