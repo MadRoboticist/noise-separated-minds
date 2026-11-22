@@ -4,18 +4,18 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Procedural, file-clerk-only. Disconnects irrational behavior from good inputs **and unlearns the reinforcements** that kept it in place.
+Procedural, file-clerk-only.
+- Severs irrational behavior from good inputs.
+- **Surgical unlearn**: only reactive keys, knowledge items, wisdom entries, and hypotheses that match the audited input are weakened or removed.
+- Contradicted hypotheses can themselves trigger an audit.
 
-When a disconnect is found the clerk:
-- drops reactive locks,
-- heavily weakens knowledge and wisdom confidence,
-- deactivates supporting hypotheses,
-- clears short-term buffer entries that were reinforcing the bad path,
-- then re-files the good input cleanly into Thought.
+## Calibration
+
+Thought uncertainty is binned and compared against actual correctness. Summary available in `stats()["calibration"]`.
 
 ## Unified event log
 
-Chronological record of routings, promotions, demotions, hypotheses, probes, and unlearn events.
+Routings, promotions, demotions, hypotheses, probes, and surgical unlearns.
 
 ## Chaos probing
 
@@ -26,4 +26,5 @@ Prefers rejects closest to the current threshold.
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
+python benchmarks/eval_depth.py
 ```
