@@ -5,8 +5,8 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, TraumaStore
-from .mind_graph import MindGraph, ChaosPile
+from .minds import ReactiveMind, TraumaStore, ChaosPile
+from .mind_graph import MindGraph
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
