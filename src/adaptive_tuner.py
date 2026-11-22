@@ -70,14 +70,25 @@ class AdaptiveTuner:
         }
         if overrides.get("audit_every", 20) > 1000:
             s.audit_every = 10**9
-        errors = []
-        for i in range(len(X)):
-            if i > 15:
+        # Train on first 70%, score on last 30%
+        n = len(X)
+        split = max(10, int(n * 0.7))
+        train_err, val_err = [], []
+        for i in range(n):
+            if i > 10:
                 pred, _ = s.predict(X[i])
                 if pred is not None:
-                    errors.append(abs(float(np.asarray(pred).ravel()[0]) - float(y[i])))
+                    e = abs(float(np.asarray(pred).ravel()[0]) - float(y[i]))
+                    (train_err if i < split else val_err).append(e)
             s.observe(X[i], y[i])
-        return float(np.mean(errors)) if errors else float("inf")
+        if not val_err:
+            return float(np.mean(train_err)) if train_err else float("inf")
+        te = float(np.mean(train_err)) if train_err else 0.0
+        ve = float(np.mean(val_err))
+        # Penalize configs that overfit the train window
+        if te > 0 and ve > 1.5 * te:
+            return ve * 1.5
+        return ve
 
     def search(self, X: np.ndarray, y: np.ndarray, n_samples: Optional[int] = None) -> Dict[str, Any]:
         """Random search over the full suite. Returns best overrides."""
