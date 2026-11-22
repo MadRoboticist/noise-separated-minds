@@ -1,6 +1,6 @@
 """The three minds: reactive (function), analytical (ensemble of perspectives), chaos (YOLO)."""
 
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 
@@ -71,8 +71,8 @@ class LocalWeightedPerspective(Perspective):
 
 
 class NearestNeighborPerspective(Perspective):
-    def __init__(self, k: int = 1):
-        super().__init__("nearest_neighbor")
+    def __init__(self, k: int = 1, name: str = None):
+        super().__init__(name or f"nn_k{k}")
         self.k = k
 
     def predict(self, x: np.ndarray) -> Optional[float]:
@@ -100,7 +100,6 @@ class PrototypePerspective(Perspective):
     def _update_prototypes(self):
         if len(self.xs) < 2:
             return
-        # Simple k-means-like: random init + few iterations
         data = np.stack(self.xs)
         idx = np.random.choice(len(data), min(self.n_prototypes, len(data)), replace=False)
         cents = data[idx].copy()
@@ -112,7 +111,6 @@ class PrototypePerspective(Perspective):
                 if mask.any():
                     cents[j] = data[mask].mean(axis=0)
         self.prototypes = cents
-        # Assign mean y per prototype
         self.proto_ys = []
         dists = np.linalg.norm(data[:, None] - cents[None, :], axis=2)
         assign = np.argmin(dists, axis=1)
@@ -186,7 +184,7 @@ class ExponentialDecayPerspective(Perspective):
             return None
         x = np.asarray(x, dtype=float).ravel()
         dists = np.array([np.linalg.norm(xi - x) for xi in self.xs])
-        ages = np.arange(len(self.xs))[::-1]  # newer = higher weight
+        ages = np.arange(len(self.xs))[::-1]
         weights = (self.decay ** ages) * np.exp(-dists)
         weights /= weights.sum() + 1e-12
         vals = np.array([float(y) if y is not None else 0.0 for y in self.ys])
@@ -218,14 +216,12 @@ class AnalyticalMind:
             MedianNeighborPerspective(k=5),
             ExponentialDecayPerspective(decay=0.85),
         ]
-        # 7th is ConstantMean as fallback; we already have 7 above. Adjust if needed.
-        # Actually list has 7. Constant can replace one if desired.
         self.blender_mode = "weighted"  # "weighted", "greedy", "mean"
 
     def set_enabled(self, names: List[str]):
-        """Enable only the named perspectives."""
+        """Enable only the named perspectives (exact or prefix match)."""
         for p in self.perspectives:
-            p.enabled = p.name in names or any(p.name.startswith(n) for n in names)
+            p.enabled = any(p.name == n or p.name.startswith(n) for n in names)
 
     def enable_all(self):
         for p in self.perspectives:
@@ -249,7 +245,7 @@ class AnalyticalMind:
             pred = p.predict(x)
             if pred is not None:
                 preds.append(pred)
-                uncs.append(p.uncertainty(x))
+                uncs.append(max(p.uncertainty(x), 1e-6))
         if not preds:
             return None
         preds = np.array(preds)
@@ -259,8 +255,7 @@ class AnalyticalMind:
             return float(preds[np.argmin(uncs)])
         if self.blender_mode == "mean":
             return float(np.mean(preds))
-        # weighted by inverse uncertainty
-        weights = 1.0 / (uncs + 1e-6)
+        weights = 1.0 / uncs
         weights /= weights.sum()
         return float(np.sum(weights * preds))
 
