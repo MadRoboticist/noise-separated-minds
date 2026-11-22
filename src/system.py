@@ -384,7 +384,7 @@ class NoiseSeparatedSystem:
 
         # --- Formation difficulty: knowledge (easy) < wisdom (harder) < reactive (hardest) ---
         # Thought is immediate; reactive is earned through sustained repetition.
-        reactive_hits_needed = max(80, hits_needed * 20)
+        reactive_hits_needed = max(200, hits_needed * 50)
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
@@ -441,7 +441,7 @@ class NoiseSeparatedSystem:
                 r_ok = (rv is None) or (abs(float(rv) - float(stored_y)) < 0.3)
                 # Wisdom is the hardest: many hits, knowledge already strong,
                 # and the pattern has been seen across a long span.
-                sustained = existing["hits"] >= max(25, hits_needed * 8)
+                sustained = existing["hits"] >= max(60, hits_needed * 15)
                 know_strong = know_item is not None and know_item.strength >= 1.2
                 layers_agree = k_ok and r_ok and sustained and age_ok and know_strong
                 if not hasattr(self, "_wdbg"):
@@ -455,7 +455,7 @@ class NoiseSeparatedSystem:
             return "promoted_knowledge"
 
         # Wisdom: sustained consistency, independent of ensemble agreement
-        if existing is not None and existing["hits"] >= max(25, hits_needed * 8):
+        if existing is not None and existing["hits"] >= max(60, hits_needed * 15):
             know_item = self.knowledge.find_item(x)
             if know_item is not None and know_item.strength >= 1.2:
                 self.wisdom.add(x, know_item.y, confidence=know_item.strength, step=self._step)
@@ -649,7 +649,7 @@ class NoiseSeparatedSystem:
         # 1. Reaction: short path, only at very high confidence
         if "reactive" in raw:
             conf = self.reactive.confidence(x) if hasattr(self.reactive, "confidence") else 0.0
-            if conf >= 0.9:
+            if conf >= 0.95:
                 pred = raw["reactive"]
                 via = "reactive"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
