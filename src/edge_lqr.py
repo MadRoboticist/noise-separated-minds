@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 
 class EdgeLQR:
-    def __init__(self, edge_names: List[str], horizon: int = 20, effort: float = 0.1):
+    def __init__(self, edge_names: List[str], horizon: int = 40, effort: float = 0.5):
         self.names = list(edge_names)
         self.n = len(self.names)
         self.horizon = horizon
@@ -44,7 +44,7 @@ class EdgeLQR:
         X = np.array(self._hist_dw)
         y = np.array(self._hist_de)
         # ridge regression for b
-        A = X.T @ X + 1e-3 * np.eye(self.n)
+        A = X.T @ X + 0.1 * np.eye(self.n)
         self.b = np.linalg.solve(A, X.T @ y)
 
     def step(self, weights: Dict[str, float], error: float) -> Dict[str, float]:

@@ -590,24 +590,37 @@ class NoiseSeparatedSystem:
         ctrl["lr_linear"] = getattr(self.thought.mind, "lr", 0.05) if hasattr(self.thought, "mind") else 0.05
         ctrl["lr_feedback"] = self.feedback.lr
         ctrl["lr_next"] = self.next_input.lr
-        self.edge_lqr.observe(ctrl, err)
+        # Apply LQR step with raw sets, then normalize once
         dw = self.edge_lqr.step(ctrl, err)
-
-        # Apply edge deltas
         for key, delta in dw.items():
             if "->" not in key:
                 continue
             src, dst = key.split("->")
             w = self.graph.weight(src, dst)
-            explore = 0.008 * np.sin(self._step + hash(key) % 5)
+            explore = 0.005 * np.sin(0.3 * self._step + (hash(key) % 5))
             d = 0.5 * delta + explore
             if abs(d) > 1e-6:
-                self.graph.set_weight(src, dst, max(0.0, min(1.0, w + d)))
+                self.graph.set_weight_raw(src, dst, max(0.0, min(1.0, w + d)))
+        self.graph.normalize()
 
-        # Apply scalar controls
-        self.fb_gain = float(np.clip(self.fb_gain + dw.get("fb_gain", 0.0), 0.0, 1.0))
-        self.feedback.lr = float(np.clip(self.feedback.lr + dw.get("lr_feedback", 0.0), 0.001, 0.2))
-        self.next_input.lr = float(np.clip(self.next_input.lr + dw.get("lr_next", 0.0), 0.001, 0.2))
+        # Scalar controls
+        self.fb_gain = float(np.clip(self.fb_gain + 0.5 * dw.get("fb_gain", 0.0), 0.0, 1.0))
+        self.feedback.lr = float(np.clip(self.feedback.lr + 0.5 * dw.get("lr_feedback", 0.0), 0.001, 0.2))
+        self.next_input.lr = float(np.clip(self.next_input.lr + 0.5 * dw.get("lr_next", 0.0), 0.001, 0.2))
+        # Thought linear lr lives on the perspectives
+        if hasattr(self.thought, "mind"):
+            for p in self.thought.mind.perspectives:
+                if hasattr(p, "lr"):
+                    p.lr = float(np.clip(p.lr + 0.5 * dw.get("lr_linear", 0.0), 0.001, 0.2))
+
+        # Observe AFTER the update so dw matches what was applied
+        ctrl_after = dict(ctrl)
+        for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
+            ctrl_after[f"{src}->output"] = self.graph.weight(src, "output")
+        ctrl_after["fb_gain"] = self.fb_gain
+        ctrl_after["lr_feedback"] = self.feedback.lr
+        ctrl_after["lr_next"] = self.next_input.lr
+        self.edge_lqr.observe(ctrl_after, err)
 
         # Internal edges: nudge the ones that feed nodes which themselves
         # had non-trivial weight into the output

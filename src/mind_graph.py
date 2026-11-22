@@ -66,6 +66,10 @@ class MindGraph:
         self.edges[(src, dst)] = float(w)
         self.normalize()
 
+    def set_weight_raw(self, src: str, dst: str, w: float):
+        """Set without normalizing. Caller must normalize once after a batch."""
+        self.edges[(src, dst)] = float(w)
+
     def normalize(self):
         """Make weights into each destination sum to 1."""
         from collections import defaultdict
