@@ -41,7 +41,6 @@ class ShortTermBuffer:
 
     def decay(self, min_hits: int = 2):
         """Drop entries that have not been reinforced."""
-        self.buffer = type(self.buffer)(
-            (item for item in self.buffer if item["hits"] >= min_hits),
-            maxlen=self.buffer.maxlen,
-        )
+        from collections import deque
+        kept = [item for item in self.buffer if item["hits"] >= min_hits]
+        self.buffer = deque(kept, maxlen=256)
