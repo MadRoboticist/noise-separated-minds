@@ -1,18 +1,11 @@
-"""Thought / Knowledge / Wisdom layers.
+"""Thought / Knowledge / Wisdom with time-gap and re-validation."""
 
-- Thought: disposable, high plasticity (the analytical ensemble lives here).
-- Knowledge: can fade with disuse or contradiction.
-- Wisdom: only grows in count; confidence can be checked and reduced.
-"""
-
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional
 import numpy as np
 from .minds import AnalyticalMind
 
 
 class ThoughtLayer:
-    """Short-term figuring. Can be lost entirely."""
-
     def __init__(self):
         self.mind = AnalyticalMind()
 
@@ -34,32 +27,36 @@ class ThoughtLayer:
 
 
 class KnowledgeItem:
-    def __init__(self, x: np.ndarray, y: Any, strength: float = 1.0):
+    def __init__(self, x: np.ndarray, y: Any, strength: float = 1.0, step: int = 0):
         self.x = np.asarray(x, dtype=float).ravel()
         self.y = y
         self.strength = strength
         self.hits = 1
+        self.first_seen = step
+        self.last_seen = step
 
 
 class KnowledgeLayer:
-    """Medium-term. Strength fades; can be weakened by contradiction."""
-
     def __init__(self, fade_rate: float = 0.98, min_strength: float = 0.05):
         self.items: List[KnowledgeItem] = []
         self.fade_rate = fade_rate
         self.min_strength = min_strength
 
-    def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3):
+    def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
             if np.allclose(item.x, x, atol=0.15):
                 item.hits += 1
                 item.strength = max(0.0, min(3.0, item.strength + boost))
+                item.last_seen = step
                 if y is not None:
                     item.y = y
-                return
+                return item
         if boost > 0:
-            self.items.append(KnowledgeItem(x, y, strength=max(0.5, boost)))
+            item = KnowledgeItem(x, y, strength=max(0.5, boost), step=step)
+            self.items.append(item)
+            return item
+        return None
 
     def fade(self):
         alive = []
@@ -80,6 +77,13 @@ class KnowledgeLayer:
                 best = item.y
         return best
 
+    def find_item(self, x: np.ndarray, tol: float = 0.15) -> Optional[KnowledgeItem]:
+        x = np.asarray(x, dtype=float).ravel()
+        for item in self.items:
+            if np.linalg.norm(item.x - x) < tol:
+                return item
+        return None
+
     def strongest(self, n: int = 5) -> List[KnowledgeItem]:
         return sorted(self.items, key=lambda it: it.strength, reverse=True)[:n]
 
@@ -88,27 +92,27 @@ class KnowledgeLayer:
 
 
 class WisdomEntry:
-    def __init__(self, x: np.ndarray, y: Any, confidence: float = 1.0):
+    def __init__(self, x: np.ndarray, y: Any, confidence: float = 1.0, step: int = 0):
         self.x = np.asarray(x, dtype=float).ravel()
         self.y = y
         self.confidence = confidence
         self.checks = 0
         self.failures = 0
+        self.created = step
+        self.last_checked = step
 
 
 class WisdomLayer:
-    """Long-term. Count only grows. Confidence can be reduced by failed checks."""
-
     def __init__(self, min_confidence: float = 0.3):
         self.entries: List[WisdomEntry] = []
         self.min_confidence = min_confidence
 
-    def add(self, x: np.ndarray, y: Any, confidence: float = 1.0):
+    def add(self, x: np.ndarray, y: Any, confidence: float = 1.0, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
         for e in self.entries:
             if np.allclose(e.x, x, atol=1e-6):
                 return
-        self.entries.append(WisdomEntry(x, y, confidence))
+        self.entries.append(WisdomEntry(x, y, confidence, step))
 
     def lookup(self, x: np.ndarray, tol: float = 0.1) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
@@ -117,16 +121,14 @@ class WisdomLayer:
                 return e.y
         return None
 
-    def check(self, x: np.ndarray, y: Any, tol: float = 0.5) -> bool:
-        """Verify a wisdom entry. Returns True if it passed.
-        On failure, confidence is reduced. Entry is never deleted.
-        """
+    def check(self, x: np.ndarray, y: Any, tol: float = 0.5, step: int = 0) -> bool:
         if y is None:
             return True
         x = np.asarray(x, dtype=float).ravel()
         for e in self.entries:
             if np.linalg.norm(e.x - x) < 0.15:
                 e.checks += 1
+                e.last_checked = step
                 if abs(float(e.y) - float(y)) > tol:
                     e.failures += 1
                     e.confidence = max(0.0, e.confidence - 0.25)
@@ -135,6 +137,10 @@ class WisdomLayer:
                     e.confidence = min(2.0, e.confidence + 0.05)
                     return True
         return True
+
+    def due_for_revalidation(self, current_step: int, interval: int = 50) -> List[WisdomEntry]:
+        """Return entries that have not been checked recently."""
+        return [e for e in self.entries if current_step - e.last_checked >= interval]
 
     def __len__(self):
         return len(self.entries)
