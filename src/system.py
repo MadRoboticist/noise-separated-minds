@@ -62,6 +62,7 @@ class NoiseSeparatedSystem:
         # Track early disagreement so we know what required deliberation
         self._early_disagreement: Dict[str, int] = defaultdict(int)
         self._recent_scores: List[float] = []
+        self._recent_raw: List[np.ndarray] = []
         self.gate_bypass = False
 
     def _trace_key(self, x: np.ndarray) -> str:
@@ -236,14 +237,14 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
-        # Repetition-based bypass: if the same neighborhood keeps appearing, treat as clean
-        similar = self.short_term.find_similar(x, tol=0.5) if len(self.short_term.buffer) > 5 else None
-        if similar is not None and similar.get("hits", 0) >= 6:
-            self.gate_bypass = True
-        elif len(self._recent_scores) >= 30:
-            # also bypass if residual noise rate is very low
-            recent_noise = sum(1 for s in self._recent_scores[-30:] if s < self.gate.threshold)
-            self.gate_bypass = (recent_noise / 30) < 0.05
+        self._recent_raw.append(np.asarray(x).ravel().copy())
+        if len(self._recent_raw) > 20:
+            self._recent_raw.pop(0)
+        # Bypass if recent raw inputs are highly similar to each other (clean repeated signal)
+        if len(self._recent_raw) >= 12:
+            base = self._recent_raw[-1]
+            dists = [np.linalg.norm(r - base) for r in self._recent_raw[-12:]]
+            self.gate_bypass = float(np.median(dists)) < 0.15
         self._recent_scores.append(score)
         if len(self._recent_scores) > 40:
             self._recent_scores.pop(0)
