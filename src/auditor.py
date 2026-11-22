@@ -157,7 +157,7 @@ class Auditor:
         # Slow its learning. Recovers when findings stop.
         if hasattr(clerk, "linear_lr"):
             clerk.linear_lr = max(0.001, clerk.linear_lr * 0.9)
-            for p in clerk.thought.perspectives:
+            for p in clerk.thought.mind.perspectives:
                 if hasattr(p, "lr"):
                     p.lr = clerk.linear_lr
         clerk.unlearn(finding.input_key)
