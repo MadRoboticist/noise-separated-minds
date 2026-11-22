@@ -56,7 +56,6 @@ class NoiseSeparatedSystem:
 
         self._step = 0
         self._err_window = []
-        self._input_err_window = []
         self._checkpoint = None
         self._checkpoint_step = 0
         self._reentries = 0
@@ -373,8 +372,7 @@ class NoiseSeparatedSystem:
         hyp_score = self.hypotheses.confirmation_score(x)
         hits_needed = max(2, self.promote_hits - (1 if hyp_score > 0.5 else 0))
         # Uncertain input dynamics -> require more hits before promoting
-        hits_needed = int(hits_needed * (1.0 + self._input_uncertainty()))
-        key = self._trace_key(x)
+                key = self._trace_key(x)
 
         # Always land structured repeats in Knowledge first
         if existing is not None and existing["hits"] >= hits_needed and score >= self.promote_score:
@@ -562,13 +560,6 @@ class NoiseSeparatedSystem:
             self._checkpoint_err = mean_err
         self._checkpoint_step = self._step
 
-    def _input_uncertainty(self) -> float:
-        """Recent next-input error, normalized to ~[0, 1].
-        High means the input dynamics are hard to predict.
-        """
-        if not self._input_err_window:
-            return 0.5
-        return float(np.clip(np.mean(self._input_err_window[-20:]), 0.0, 2.0)) / 2.0
 
 
     def predict(self, x: np.ndarray):
