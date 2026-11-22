@@ -2,6 +2,11 @@
 
 Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
+## Reactive vs Wisdom
+
+- **Reactive** = muscle memory. Acquired by straight mechanical repetition or by trauma (a large sudden error on a structured input). Fast lookup. Does not automatically become Wisdom.
+- **Wisdom** = later consistency after earlier deliberation. An item becomes eligible only if it previously showed disagreement, required hypotheses, or spent time in Knowledge, and is now consistent. Not the same path as Reactive.
+
 ## Configuration
 
 `SystemConfig` (presets `small()` / `large()`).
@@ -27,9 +32,6 @@ Threshold proximity + recency-weighted similarity to good inputs.
 ```bash
 python benchmarks/comparative.py
 ```
-
-Tracks mean error, residual-noise rate, and unlearn count across seeds and noise levels.
-Exits non-zero if the small filtered system under-performs on accuracy or residual-noise rate exceeds the guard.
 
 ## Persistence
 
