@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, TraumaStore, ChaosPile, FeedbackLinear, NextInputLinear
+from .minds import ReactiveMind, TraumaStore, ChaosPile
 from .mind_graph import MindGraph
 from .edge_lqr import EdgeLQR
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
@@ -28,10 +28,7 @@ class NoiseSeparatedSystem:
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.trauma = TraumaStore()
-        self.feedback = FeedbackLinear()
-        self.next_input = None  # allocated on first use if enabled
         self._prev_x = None
-        self._enable_next_input = False
         self.graph_mode = 'blend'
         self.graph = MindGraph()
         self.edge_lqr = EdgeLQR([
@@ -259,14 +256,6 @@ class NoiseSeparatedSystem:
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
-        if self._enable_next_input and self._prev_x is not None:
-            if self.next_input is None:
-                self.next_input = NextInputLinear()
-            self.next_input.observe(self._prev_x, x)
-            if self.next_input.last_error is not None:
-                self._input_err_window.append(self.next_input.last_error)
-                if len(self._input_err_window) > 100:
-                    self._input_err_window.pop(0)
         self._prev_x = np.asarray(x, dtype=float).ravel().copy()
         if y is not None:
             pred, _ = self.predict(x)
@@ -275,13 +264,7 @@ class NoiseSeparatedSystem:
                 if len(self._err_window) > 100:
                     self._err_window.pop(0)
             self._nudge_graph(x, y, pred)
-            if pred is not None:
-                # Train feedback only on structured predictions
-                _, via = self.predict(x)
-                if "chaos" not in str(via):
-                    # Down-weight the residual when input dynamics are uncertain
-                    scale = 1.0 - 0.5 * self._input_uncertainty()
-                    self.feedback.observe(x, scale * (float(y) - float(pred)))
+            
             self._maybe_checkpoint()
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
@@ -655,9 +638,6 @@ class NoiseSeparatedSystem:
                     delta = step * w * dst_w
                     self.graph.set_weight(src, dst, max(0.0, min(1.0, w + delta)))
 
-    def predict_next_input(self, x: np.ndarray):
-        """Feedforward: predict x_{t+1} from x_t."""
-        return self.next_input.predict(x)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
