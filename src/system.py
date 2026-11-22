@@ -315,9 +315,9 @@ class NoiseSeparatedSystem:
             self.chaos.reject(x)
             # Also feed the noise-path MLP so the ensemble can learn from rejected packets
             for p in self.thought.mind.perspectives:
-                if getattr(p, "name", "") == "mlp_noise":
+                if getattr(p, "name", "") == "linear_noise":
                     p.observe(x, y)
-            self._record(x, {"kind": "routed_chaos_and_noise_mlp", **context})
+            self._record(x, {"kind": "routed_chaos_and_noise_linear", **context})
             return "chaos"
 
         self.thought.observe(x, y)

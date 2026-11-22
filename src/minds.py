@@ -309,11 +309,11 @@ class AnalyticalMind:
             OnlineLinearPerspective(max_obs=max_obs),
             NearestNeighborPerspective(k=5, max_obs=max_obs),
             TinyMLPPerspective(max_obs=max_obs),
-            TinyMLPPerspective(max_obs=max_obs),  # noise-path MLP
+            OnlineLinearPerspective(max_obs=max_obs),  # noise-path linear
         ]
         self.perspectives[1].name = "nn_k5"
         self.perspectives[2].name = "mlp"
-        self.perspectives[3].name = "mlp_noise"
+        self.perspectives[3].name = "linear_noise"
         self.blender_mode = "accuracy"
         self.collapse_threshold = collapse_threshold
         self.events: List[str] = []
