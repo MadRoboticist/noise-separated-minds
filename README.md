@@ -4,29 +4,21 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Non-numeric contexts
 
-`observe_context` / `predict_context` accept strings, categories, mixed lists, or numbers. A hashing encoder turns them into fixed vectors before the gate and minds.
+`observe_context` / `predict_context` accept strings, categories, mixed lists, or numbers.
 
-```python
-s.observe_context("the sky is blue", y=1.0)
-s.observe_context(["cat", 3, "warm"], y=0.5)
-pred, via = s.predict_context("the sky is blue")
-```
+## Benchmarks
 
-Benchmark:
 ```bash
-python benchmarks/context_bench.py
+python benchmarks/comparative.py      # small filtered vs large weak filter
+python benchmarks/context_bench.py    # non-numeric phrases
+python benchmarks/substantial.py      # multi-pattern numeric + text, longer runs
 ```
 
-## Reactive vs Wisdom
+## Reactive / Knowledge / Wisdom
 
+- **Knowledge** receives every structured repeat (can fade).
 - **Reactive** = muscle memory (repetition or trauma).
 - **Wisdom** = later consistency after earlier deliberation.
-
-## Comparative evaluation
-
-```bash
-python benchmarks/comparative.py
-```
 
 ## Run
 
