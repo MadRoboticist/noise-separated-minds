@@ -258,6 +258,51 @@ class LatentResidualPerspective(Perspective):
         return float(mu + 0.1 * np.random.randn())
 
 
+
+class TinyMLPPerspective(Perspective):
+    """Small online MLP perspective."""
+    def __init__(self, hidden=16, lr=0.01, max_obs=2_000):
+        super().__init__("mlp", max_obs)
+        self.hidden = hidden
+        self.lr = lr
+        self.W1 = None
+        self.b1 = None
+        self.W2 = None
+        self.b2 = 0.0
+
+    def _ensure(self, dim):
+        if self.W1 is None:
+            rng = np.random.RandomState(0)
+            self.W1 = rng.randn(self.hidden, dim) * 0.1
+            self.b1 = np.zeros(self.hidden)
+            self.W2 = rng.randn(self.hidden) * 0.1
+
+    def observe(self, x, y=None):
+        super().observe(x, y)
+        if y is None:
+            return
+        x = np.asarray(x, dtype=float).ravel()
+        self._ensure(len(x))
+        h = np.tanh(self.W1 @ x + self.b1)
+        pred = float(self.W2 @ h + self.b2)
+        err = pred - float(y)
+        self.W2 -= self.lr * err * h
+        dh = err * self.W2 * (1 - h**2)
+        self.W1 -= self.lr * np.outer(dh, x)
+        self.b1 -= self.lr * dh
+        self.b2 -= self.lr * err
+
+    def predict(self, x):
+        if self.W1 is None:
+            return None
+        x = np.asarray(x, dtype=float).ravel()
+        h = np.tanh(self.W1 @ x + self.b1)
+        return float(self.W2 @ h + self.b2)
+
+    def sample(self, x):
+        return self.predict(x)
+
+
 class AnalyticalMind:
     def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
         self.perspectives: List[Perspective] = [
