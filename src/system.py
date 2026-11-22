@@ -440,7 +440,8 @@ class NoiseSeparatedSystem:
             if thought_pred is not None and know_item is not None and stored_y is not None:
                 t_ok = abs(float(thought_pred) - float(stored_y)) < 0.3
                 k_ok = abs(float(know_item.y) - float(stored_y)) < 0.3
-                r_ok = (react_val is None) or (abs(float(react_val) - float(stored_y)) < 0.3)
+                rv = react_val[0] if isinstance(react_val, tuple) else react_val
+                r_ok = (rv is None) or (abs(float(rv) - float(stored_y)) < 0.3)
                 # Wisdom is the hardest: many hits, knowledge already strong,
                 # and the pattern has been seen across a long span.
                 sustained = existing["hits"] >= max(400, hits_needed * 100)
