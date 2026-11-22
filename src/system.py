@@ -663,7 +663,7 @@ class NoiseSeparatedSystem:
                 if e.x.shape == x_arr.shape and np.linalg.norm(e.x - x_arr) < 0.08 * np.sqrt(len(x_arr)):
                     w_entry = e
                     break
-            if w_entry is not None and w_entry.confidence >= 2.5 and w_entry.n >= 40:
+            if w_entry is not None and w_entry.confidence >= 2.8 and w_entry.n >= 100:
                 pred = raw["wisdom"]
                 via = "thought:wisdom"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
