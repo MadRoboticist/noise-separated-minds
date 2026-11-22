@@ -1,4 +1,4 @@
-"""Top-level system with full feedback including Wisdom checks."""
+"""System with agreement-gated promotion and accuracy-aware Thought."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -13,6 +13,7 @@ class NoiseSeparatedSystem:
         noise_threshold: float = 0.35,
         promote_hits: int = 4,
         promote_score: float = 0.75,
+        min_agreement: float = 0.6,
         knowledge_boost: float = 0.4,
         wisdom_strength: float = 1.5,
         explore_prob: float = 0.05,
@@ -29,11 +30,11 @@ class NoiseSeparatedSystem:
         self.noise_threshold = noise_threshold
         self.promote_hits = promote_hits
         self.promote_score = promote_score
+        self.min_agreement = min_agreement
         self.knowledge_boost = knowledge_boost
         self.wisdom_strength = wisdom_strength
         self.explore_prob = explore_prob
         self.demote_error_tol = demote_error_tol
-
         self._step = 0
 
     def observe(self, x: np.ndarray, y=None):
@@ -41,14 +42,10 @@ class NoiseSeparatedSystem:
         self._step += 1
         score = self.gate.score(x)
 
-        # Check existing Wisdom against this observation
         if y is not None:
-            passed = self.wisdom.check(x, y, tol=self.demote_error_tol)
-            if not passed:
-                # Wisdom failed: force re-examination in Thought, weaken related knowledge
+            if not self.wisdom.check(x, y, tol=self.demote_error_tol):
                 self.thought.observe(x, y)
                 self.knowledge.add_or_reinforce(x, y, boost=-0.3)
-                # Do not return early; continue normal processing
 
         if score >= self.noise_threshold and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
@@ -63,7 +60,13 @@ class NoiseSeparatedSystem:
         self.short_term.add(x, score, y)
 
         existing = self.short_term.find_similar(x)
-        if existing is not None and existing["hits"] >= self.promote_hits and score >= self.promote_score:
+        agreement = self.thought.mind.agreement(x)
+        if (
+            existing is not None
+            and existing["hits"] >= self.promote_hits
+            and score >= self.promote_score
+            and agreement >= self.min_agreement
+        ):
             stored_y = y if y is not None else existing.get("output")
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost)
 
@@ -84,8 +87,7 @@ class NoiseSeparatedSystem:
     def _try_chaos_reentry(self):
         if not self.chaos.rejected:
             return
-        candidates = self.chaos.rejected[-5:]
-        for cx in candidates:
+        for cx in self.chaos.rejected[-5:]:
             if self.gate.score(cx) >= self.noise_threshold + 0.1:
                 self.thought.observe(cx, y=None)
                 return
@@ -96,35 +98,27 @@ class NoiseSeparatedSystem:
         r = self.reactive.lookup(x)
         if r is not None and abs(float(r) - float(y)) > self.demote_error_tol:
             key = self.reactive._key(x)
-            if key in self.reactive.table:
-                del self.reactive.table[key]
+            self.reactive.table.pop(key, None)
             self.knowledge.add_or_reinforce(x, y, boost=-0.5)
             self.thought.observe(x, y)
             return
-
         k = self.knowledge.lookup(x)
         if k is not None and abs(float(k) - float(y)) > self.demote_error_tol:
             self.knowledge.add_or_reinforce(x, y, boost=-0.4)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
-
         w = self.wisdom.lookup(x)
         if w is not None:
             return w, "wisdom"
-
         r = self.reactive.lookup(x)
         if r is not None:
             return r, "reactive"
-
         k = self.knowledge.lookup(x)
         if k is not None:
             return k, "knowledge"
-
-        score = self.gate.score(x)
-        if score < self.noise_threshold:
+        if self.gate.score(x) < self.noise_threshold:
             return self.chaos.sample(getattr(x, "shape", (1,))), "chaos"
-
         return self.thought.sample(x), "thought"
 
     def stats(self) -> dict:
