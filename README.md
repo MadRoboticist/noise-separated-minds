@@ -2,30 +2,24 @@
 
 Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
-## Core Idea
+## Consolidation
 
-1. **Randomness Gate**: Multi-test detector with adaptive threshold.
-2. **Thought**: Short-term figuring (analytical ensemble with generative members).
-3. **Knowledge**: Medium-term. Can fade or be weakened.
-4. **Wisdom**: Long-term. Count only grows; confidence can fall.
-5. **Reactive**: Deterministic functions (bounded).
-6. **Chaos**: Residual randomness with **active probing** and a promotion budget.
+- Promotion to Knowledge requires hits + structure score + agreement.
+- Promotion to Wisdom additionally requires the pattern to have aged at least `min_age` steps.
+- Wisdom entries are periodically re-validated (forced back through Thought) if they have not been checked recently.
+- Confidence can still fall on contradiction; count never shrinks.
 
 ## Chaos
 
-- Bounded reject pile.
-- `probe(n)` actively samples candidates for re-testing.
-- Successful probes re-enter Thought and are counted.
-- Promotion of chaos-originated material is limited by `chaos_promote_budget` (fraction of steps).
-- Stats report probe attempts and successes.
+Active probing + promotion budget.
 
-## Thought ensemble
+## Thought
 
-Local, nearest-neighbor, online linear, GMM, latent residual. Generative sampling, auto-disable, event log.
+Generative ensemble (GMM, latent residual, local, linear) with auto-disable.
 
-## Randomness gate
+## Gate
 
-Adaptive threshold + residual noise rate.
+Adaptive multi-test threshold + residual noise rate.
 
 ## Persistence
 
