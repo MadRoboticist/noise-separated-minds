@@ -153,10 +153,10 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradiction -> demote on smaller errors, so bad entries
-        # are removed sooner. Recovers slowly when things are stable.
-        if hasattr(clerk, "demote_error_tol"):
-            clerk.demote_error_tol = max(0.1, clerk.demote_error_tol * 0.9)
+        # Contradiction -> fade faster so the stale value does not persist.
+        # Bounded so entries still form and the spread survives.
+        if hasattr(clerk, "fade_rate"):
+            clerk.fade_rate = min(0.05, clerk.fade_rate + 0.002)
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:

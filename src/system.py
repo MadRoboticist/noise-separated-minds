@@ -79,7 +79,7 @@ class NoiseSeparatedSystem:
         self.wisdom_use_n = 180
         self.trauma_negate_strength = 0.5
         self.knowledge_boost = cfg.knowledge_boost if hasattr(cfg, 'knowledge_boost') else 0.3
-        self.store_step = 1.0  # auditor shrinks on contradiction, grows otherwise
+        self.fade_rate = 0.01  # auditor raises on contradiction, lowers when stable
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 2).tolist())
