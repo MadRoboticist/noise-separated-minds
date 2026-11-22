@@ -13,22 +13,25 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Feedback loops
 
-- Promotion: consistent Thought → Knowledge → Wisdom + Reactive
-- Demotion: high error weakens Knowledge and removes Reactive entries
-- **Wisdom check**: every observation verifies matching Wisdom entries. Failures reduce confidence (never delete). Low-confidence Wisdom is ignored at prediction time and the case is forced back into Thought.
-- Chaos re-entry and exploratory routing
+- Promotion requires hit-count, structure score, **and cross-perspective agreement**
+- Demotion on high error (Reactive removed, Knowledge weakened)
+- Wisdom confidence checked on every matching observation (never deleted)
+- Chaos re-entry and light exploratory routing
+- Blender uses recent per-perspective accuracy
 
-## Why
+## Perspectives inside Thought
 
-Pure randomness cannot be absorbed into a pdf without skewing it. Filter first. Thoughts disposable, knowledge provisional, wisdom cumulative but still accountable.
+Local weighted, nearest-neighbor (k=1,3,5), online linear (two learning rates), wider local. Toggleable.
 
 ## Run
 
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
+python tests/test_layers.py
+python benchmarks/ensemble_search.py
 ```
 
 ## Status
 
-Prototype with bidirectional consolidation, chaos re-entry, and Wisdom confidence checks.
+Prototype with agreement-gated promotion, accuracy-weighted blending, parametric perspectives, and asymmetry tests.
