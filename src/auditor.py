@@ -1,114 +1,90 @@
-"""Independent auditor.
+"""Procedural auditor.
 
-Periodically inspects tracks that are misbehaving, attempts a root-cause
-diagnosis, and recommends re-filing actions to the file clerk.
+Works only with the file clerk. Given a suspect input it recalls the
+recorded trace and walks backward until it finds the disconnect, then
+asks the clerk to re-file.
 """
 
-from typing import List, Dict, Any
+from typing import List, Optional, Dict, Any
 import numpy as np
 
 
 class AuditFinding:
-    def __init__(self, kind: str, target: str, detail: str, action: str):
-        self.kind = kind          # e.g. "high_error", "stale_wisdom", "collapsed_perspective"
-        self.target = target      # what was inspected
+    def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str):
+        self.input_key = input_key
+        self.disconnect_at = disconnect_at  # e.g. "gate", "promotion", "wisdom", "reactive"
         self.detail = detail
-        self.action = action      # recommended re-file action
+        self.action = action
 
 
 class Auditor:
-    def __init__(self, error_tol: float = 0.6):
-        self.error_tol = error_tol
+    """Purely procedural. Never touches minds directly."""
+
+    def __init__(self):
         self.findings: List[AuditFinding] = []
 
-    def inspect(self, system) -> List[AuditFinding]:
-        """Run a full audit pass. Returns new findings."""
-        new = []
-        new.extend(self._check_reactive(system))
-        new.extend(self._check_knowledge(system))
-        new.extend(self._check_wisdom(system))
-        new.extend(self._check_perspectives(system))
-        self.findings.extend(new)
-        if len(self.findings) > 500:
-            self.findings = self.findings[-500:]
-        return new
+    def audit_input(self, clerk, x: np.ndarray, observed_y: Optional[float] = None) -> Optional[AuditFinding]:
+        """Recall the trace for this input and walk backward to the disconnect."""
+        key = clerk._trace_key(x)
+        trace = clerk.get_trace(key)
+        if not trace:
+            return None
 
-    def _check_reactive(self, system) -> List[AuditFinding]:
-        findings = []
-        # Spot-check a few reactive entries against Thought
-        items = list(system.reactive.table.items())[:5]
-        for key, y in items:
-            # We cannot easily invert the key; skip deep check if no recent context
-            # Placeholder: flag if Thought uncertainty on recent inputs is high
-            pass
-        if len(system.reactive) > 0 and system.thought.mind.uncertainty(np.zeros(8)) > 2.0:
-            findings.append(AuditFinding(
-                "reactive_uncertainty",
-                "reactive",
-                "Thought reports high uncertainty near reactive region",
-                "demote_suspect_reactive"
-            ))
-        return findings
+        # Walk from most recent event backward
+        for event in reversed(trace):
+            kind = event.get("kind")
+            if kind == "predict":
+                pred = event.get("pred")
+                if observed_y is not None and pred is not None:
+                    if abs(float(pred) - float(observed_y)) > clerk.demote_error_tol:
+                        finding = AuditFinding(
+                            key, "prediction",
+                            f"Prediction {pred} disagreed with {observed_y}",
+                            "demote_and_rethink"
+                        )
+                        self.findings.append(finding)
+                        return finding
+            elif kind == "promoted_wisdom":
+                if observed_y is not None and abs(float(event.get("y", 0)) - float(observed_y)) > clerk.demote_error_tol:
+                    finding = AuditFinding(
+                        key, "wisdom_promotion",
+                        "Wisdom was promoted with a value that later failed",
+                        "reduce_wisdom_confidence"
+                    )
+                    self.findings.append(finding)
+                    return finding
+            elif kind == "promoted_knowledge":
+                if observed_y is not None and abs(float(event.get("y", 0)) - float(observed_y)) > clerk.demote_error_tol:
+                    finding = AuditFinding(
+                        key, "knowledge_promotion",
+                        "Knowledge promotion later contradicted",
+                        "weaken_knowledge"
+                    )
+                    self.findings.append(finding)
+                    return finding
+            elif kind == "routed_chaos" and observed_y is not None:
+                # Structured observation was sent to chaos
+                finding = AuditFinding(
+                    key, "gate",
+                    "Input with a label was routed to chaos",
+                    "force_to_thought"
+                )
+                self.findings.append(finding)
+                return finding
 
-    def _check_knowledge(self, system) -> List[AuditFinding]:
-        findings = []
-        for item in system.knowledge.items:
-            if item.strength < 0.2 and item.hits > 3:
-                findings.append(AuditFinding(
-                    "weak_knowledge",
-                    "knowledge",
-                    f"Item strength {item.strength:.2f} after {item.hits} hits",
-                    "weaken_or_drop"
-                ))
-        return findings
+        return None
 
-    def _check_wisdom(self, system) -> List[AuditFinding]:
-        findings = []
-        for e in system.wisdom.entries:
-            if e.confidence < system.wisdom.min_confidence:
-                findings.append(AuditFinding(
-                    "low_confidence_wisdom",
-                    "wisdom",
-                    f"Confidence {e.confidence:.2f}, failures {e.failures}",
-                    "force_revalidation"
-                ))
-            elif system._step - e.last_checked > system.revalidate_interval * 2:
-                findings.append(AuditFinding(
-                    "stale_wisdom",
-                    "wisdom",
-                    "Not checked recently",
-                    "schedule_revalidation"
-                ))
-        return findings
-
-    def _check_perspectives(self, system) -> List[AuditFinding]:
-        findings = []
-        for p in system.thought.mind.perspectives:
-            if p.auto_disabled:
-                findings.append(AuditFinding(
-                    "collapsed_perspective",
-                    p.name,
-                    "Auto-disabled due to high error",
-                    "keep_disabled_or_reset"
-                ))
-        return findings
-
-    def apply(self, system, findings: List[AuditFinding]):
-        """Execute recommended re-file actions."""
-        for f in findings:
-            if f.action == "force_revalidation":
-                # already handled by system's revalidate; just log
-                pass
-            elif f.action == "weaken_or_drop":
-                # extra fade on weak knowledge
-                system.knowledge.fade()
-            elif f.action == "demote_suspect_reactive":
-                # clear a portion of reactive if uncertainty is high
-                if len(system.reactive) > 10:
-                    # drop oldest-ish
-                    keys = list(system.reactive.table.keys())[:2]
-                    for k in keys:
-                        system.reactive.table.pop(k, None)
-            elif f.action == "keep_disabled_or_reset":
-                # leave auto-disable logic in charge
-                pass
+    def apply(self, clerk, finding: AuditFinding):
+        """Ask the file clerk to re-file according to the finding."""
+        if finding is None:
+            return
+        action = finding.action
+        # The clerk exposes only re-file methods; auditor never touches layers directly
+        if action == "demote_and_rethink":
+            clerk.refile_demote(finding.input_key)
+        elif action == "reduce_wisdom_confidence":
+            clerk.refile_weaken_wisdom(finding.input_key)
+        elif action == "weaken_knowledge":
+            clerk.refile_weaken_knowledge(finding.input_key)
+        elif action == "force_to_thought":
+            clerk.refile_to_thought(finding.input_key)
