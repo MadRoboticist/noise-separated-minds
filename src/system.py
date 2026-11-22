@@ -1,10 +1,11 @@
-"""System with adaptive exploration rate."""
+"""System with adaptive exploration, bounded memory, and persistence."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
+from .persistence import save as _save, load as _load
 
 
 class NoiseSeparatedSystem:
@@ -20,14 +21,19 @@ class NoiseSeparatedSystem:
         explore_min: float = 0.01,
         explore_max: float = 0.2,
         demote_error_tol: float = 0.5,
+        max_obs: int = 2_000,
+        max_chaos: int = 5_000,
     ):
         self.gate = RandomnessGate()
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.thought = ThoughtLayer()
+        # propagate bound
+        for p in self.thought.mind.perspectives:
+            p.max_obs = max_obs
         self.knowledge = KnowledgeLayer()
         self.wisdom = WisdomLayer()
-        self.chaos = ChaosPile()
+        self.chaos = ChaosPile(max_rejected=max_chaos)
 
         self.noise_threshold = noise_threshold
         self.promote_hits = promote_hits
@@ -43,22 +49,22 @@ class NoiseSeparatedSystem:
         self._reentries = 0
         self._recent_agreements = []
 
+    def save(self, path: str):
+        _save(self, path)
+
+    @staticmethod
+    def load(path: str):
+        return _load(path)
+
     def _adapt_exploration(self, agreement: float):
-        """Raise exploration when agreement is low or re-entries are succeeding;
-        lower it when the system is confident and stable.
-        """
         self._recent_agreements.append(agreement)
         if len(self._recent_agreements) > 20:
             self._recent_agreements.pop(0)
         avg_agree = np.mean(self._recent_agreements) if self._recent_agreements else 0.5
-
-        # Low agreement → explore more
         if avg_agree < 0.5:
             self.explore_prob = min(self.explore_max, self.explore_prob * 1.05 + 0.005)
         else:
             self.explore_prob = max(self.explore_min, self.explore_prob * 0.98)
-
-        # Successful re-entries encourage a bit more exploration
         if self._reentries > 0 and self._step % 30 == 0:
             self.explore_prob = min(self.explore_max, self.explore_prob + 0.01)
             self._reentries = max(0, self._reentries - 1)
@@ -97,7 +103,6 @@ class NoiseSeparatedSystem:
         ):
             stored_y = y if y is not None else existing.get("output")
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost)
-
             for item in self.knowledge.strongest(5):
                 if np.allclose(item.x, np.asarray(x).ravel(), atol=0.15) and item.strength >= self.wisdom_strength:
                     self.wisdom.add(x, stored_y, confidence=item.strength)
