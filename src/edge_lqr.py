@@ -56,7 +56,7 @@ class EdgeLQR:
         self._last_err = None
 
     def confident(self) -> bool:
-        return len(self._hist_dw) >= 15 and np.linalg.norm(self.b) > 1e-4
+        return len(self._hist_dw) >= 12 and np.linalg.norm(self.b) > 1e-5
 
     def step(self, weights: Dict[str, float], error: float) -> Dict[str, float]:
         """Return optimal edge deltas.
