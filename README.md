@@ -2,16 +2,14 @@
 
 Unsupervised architecture that separates pure randomness from structured signal, then consolidates across three timescales with full feedback.
 
-## Non-numeric contexts
-
-`observe_context` / `predict_context` accept strings, categories, mixed lists, or numbers.
-
 ## Benchmarks
 
 ```bash
 python benchmarks/comparative.py      # small filtered vs large weak filter
 python benchmarks/context_bench.py    # non-numeric phrases
-python benchmarks/substantial.py      # multi-pattern numeric + text, longer runs
+python benchmarks/substantial.py      # multi-pattern numeric + text
+python benchmarks/stress_context.py   # context-length sweep
+python benchmarks/ablation.py         # gate / reactive / wisdom ablations + iris
 ```
 
 ## Reactive / Knowledge / Wisdom
