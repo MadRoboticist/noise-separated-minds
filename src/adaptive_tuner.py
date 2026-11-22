@@ -30,6 +30,7 @@ PARAM_SPACE = {
     "demote_error_tol": [0.2, 0.35, 0.5, 0.8],
     "audit_every": [10**9, 15, 30, 60],
     "revalidate_interval": [20, 40, 80],
+    "graph_mode": ["cascade", "blend", "thought_consults"],
 }
 
 
@@ -54,6 +55,8 @@ class AdaptiveTuner:
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
         s = NoiseSeparatedSystem(config=cfg)
+        if "graph_mode" in overrides:
+            s.graph_mode = overrides["graph_mode"]
         if overrides.get("audit_every", 20) > 1000:
             s.audit_every = 10**9
         errors = []

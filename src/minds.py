@@ -14,6 +14,16 @@ class ReactiveMind:
         return v.tobytes()
 
     def store(self, x: np.ndarray, y: Any):
+        # One pattern = one entry. If a nearby key exists, reinforce it instead.
+        x = np.asarray(x, dtype=float).ravel()
+        for k in list(self.table.keys()):
+            try:
+                xi = np.frombuffer(k, dtype=float)
+                if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.6:
+                    self.table[k] = y
+                    return
+            except Exception:
+                continue
         if len(self.table) >= self.max_entries:
             self.table.pop(next(iter(self.table)))
         self.table[self._key(x)] = y
