@@ -370,11 +370,7 @@ class AnalyticalMind:
     def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
         self.perspectives: List[Perspective] = [
             OnlineLinearPerspective(max_obs=max_obs),
-            NearestNeighborPerspective(k=5, max_obs=max_obs),
-            TinyMLPPerspective(max_obs=max_obs),
         ]
-        self.perspectives[1].name = "nn_k5"
-        self.perspectives[2].name = "mlp"
         self.blender_mode = "greedy"
         self.collapse_threshold = collapse_threshold
         self.events: List[str] = []
