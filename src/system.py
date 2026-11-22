@@ -1,4 +1,4 @@
-"""System with active chaos probing and promotion budget."""
+"""Consolidation with time-gap requirement and Wisdom re-validation."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -15,6 +15,7 @@ class NoiseSeparatedSystem:
         promote_hits: int = 4,
         promote_score: float = 0.75,
         min_agreement: float = 0.6,
+        min_age: int = 8,
         knowledge_boost: float = 0.4,
         wisdom_strength: float = 1.5,
         explore_prob: float = 0.05,
@@ -24,6 +25,7 @@ class NoiseSeparatedSystem:
         max_obs: int = 2_000,
         max_chaos: int = 5_000,
         chaos_promote_budget: float = 0.15,
+        revalidate_interval: int = 40,
     ):
         self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
@@ -38,6 +40,7 @@ class NoiseSeparatedSystem:
         self.promote_hits = promote_hits
         self.promote_score = promote_score
         self.min_agreement = min_agreement
+        self.min_age = min_age
         self.knowledge_boost = knowledge_boost
         self.wisdom_strength = wisdom_strength
         self.explore_prob = explore_prob
@@ -45,6 +48,7 @@ class NoiseSeparatedSystem:
         self.explore_max = explore_max
         self.demote_error_tol = demote_error_tol
         self.chaos_promote_budget = chaos_promote_budget
+        self.revalidate_interval = revalidate_interval
         self._step = 0
         self._reentries = 0
         self._chaos_promotions = 0
@@ -61,7 +65,7 @@ class NoiseSeparatedSystem:
         self._recent_agreements.append(agreement)
         if len(self._recent_agreements) > 20:
             self._recent_agreements.pop(0)
-        avg_agree = np.mean(self._recent_agreements) if self._recent_agreements else 0.5
+        avg_agree = float(np.mean(self._recent_agreements)) if self._recent_agreements else 0.5
         if avg_agree < 0.5:
             self.explore_prob = min(self.explore_max, self.explore_prob * 1.05 + 0.005)
         else:
@@ -73,7 +77,7 @@ class NoiseSeparatedSystem:
     def _chaos_budget_ok(self) -> bool:
         if self._step < 10:
             return True
-        return (self._chaos_promotions / self._step) < self.chaos_promote_budget
+        return (self._chaos_promotions / max(self._step, 1)) < self.chaos_promote_budget
 
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
@@ -83,9 +87,9 @@ class NoiseSeparatedSystem:
         self.gate.update(score, is_noise)
 
         if y is not None:
-            if not self.wisdom.check(x, y, tol=self.demote_error_tol):
+            if not self.wisdom.check(x, y, tol=self.demote_error_tol, step=self._step):
                 self.thought.observe(x, y)
-                self.knowledge.add_or_reinforce(x, y, boost=-0.3)
+                self.knowledge.add_or_reinforce(x, y, boost=-0.3, step=self._step)
 
         agreement = self.thought.mind.agreement(x) if len(self.thought) > 2 else 0.5
         self._adapt_exploration(agreement)
@@ -104,6 +108,9 @@ class NoiseSeparatedSystem:
         self.short_term.add(x, score, y)
 
         existing = self.short_term.find_similar(x)
+        item = self.knowledge.find_item(x)
+        age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
+
         if (
             existing is not None
             and existing["hits"] >= self.promote_hits
@@ -112,10 +119,13 @@ class NoiseSeparatedSystem:
             and self._chaos_budget_ok()
         ):
             stored_y = y if y is not None else existing.get("output")
-            self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost)
-            for item in self.knowledge.strongest(5):
-                if np.allclose(item.x, np.asarray(x).ravel(), atol=0.15) and item.strength >= self.wisdom_strength:
-                    self.wisdom.add(x, stored_y, confidence=item.strength)
+            self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
+
+            # Wisdom only after the pattern has aged
+            if age_ok:
+                item = self.knowledge.find_item(x)
+                if item and item.strength >= self.wisdom_strength:
+                    self.wisdom.add(x, stored_y, confidence=item.strength, step=self._step)
                     self.reactive.store(x, stored_y)
                     return "promoted_wisdom"
             return "promoted_knowledge"
@@ -126,11 +136,11 @@ class NoiseSeparatedSystem:
                 self._reentries += 1
                 self._chaos_promotions += 1
             self._check_demotions(x, y)
+            self._revalidate_wisdom()
 
         return "thought"
 
     def _active_chaos_probe(self) -> bool:
-        """Actively sample from chaos and re-test."""
         candidates = self.chaos.probe(n=4)
         for cx in candidates:
             if self.gate.score(cx) >= self.gate.threshold + 0.02:
@@ -139,6 +149,13 @@ class NoiseSeparatedSystem:
                 return True
         return False
 
+    def _revalidate_wisdom(self):
+        """Periodically force old Wisdom entries back through Thought."""
+        due = self.wisdom.due_for_revalidation(self._step, self.revalidate_interval)
+        for e in due[:2]:  # limit work per step
+            self.thought.observe(e.x, e.y)
+            e.last_checked = self._step
+
     def _check_demotions(self, x, y):
         if y is None:
             return
@@ -146,12 +163,12 @@ class NoiseSeparatedSystem:
         if r is not None and abs(float(r) - float(y)) > self.demote_error_tol:
             key = self.reactive._key(x)
             self.reactive.table.pop(key, None)
-            self.knowledge.add_or_reinforce(x, y, boost=-0.5)
+            self.knowledge.add_or_reinforce(x, y, boost=-0.5, step=self._step)
             self.thought.observe(x, y)
             return
         k = self.knowledge.lookup(x)
         if k is not None and abs(float(k) - float(y)) > self.demote_error_tol:
-            self.knowledge.add_or_reinforce(x, y, boost=-0.4)
+            self.knowledge.add_or_reinforce(x, y, boost=-0.4, step=self._step)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)
@@ -177,10 +194,7 @@ class NoiseSeparatedSystem:
             "reactive": len(self.reactive),
             "chaos": len(self.chaos),
             "chaos_probes": self.chaos.probe_attempts,
-            "chaos_probe_successes": self.chaos.probe_successes,
             "explore_prob": round(self.explore_prob, 4),
             "gate_threshold": round(self.gate.threshold, 3),
-            "residual_noise_rate": round(self.gate.residual_noise_rate(), 3),
-            "reentries": self._reentries,
             "step": self._step,
         }
