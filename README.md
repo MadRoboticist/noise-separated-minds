@@ -4,16 +4,15 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Configuration
 
-`SystemConfig` (and presets `small()` / `large()`) holds every knob. Pass it to `NoiseSeparatedSystem(config=...)`.
+`SystemConfig` (presets `small()` / `large()`).
 
 ## Auditor
 
-Surgical unlearn, hypothesis-triggered audits, `export_audit_trail`.
+Surgical unlearn. `export_audit_trail(path)` now includes the input key and counts of reactive drops, knowledge/wisdom weakenings, and hypothesis deactivations.
 
 ## Calibration
 
-- Thought uncertainty: online temperature scaling.
-- Wisdom confidence: reliability bins (`stats()["wisdom_reliability"]`).
+Thought temperature scaling + Wisdom confidence reliability bins.
 
 ## Comparative evaluation
 
@@ -21,7 +20,7 @@ Surgical unlearn, hypothesis-triggered audits, `export_audit_trail`.
 python benchmarks/comparative.py
 ```
 
-Compares a small filtered+auditor system against a larger weakly-filtered system on the same stream.
+Multi-seed, multi-noise sweep. Exits non-zero if the small filtered system under-performs on more than half the runs.
 
 ## Run
 
