@@ -4,18 +4,13 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Procedural, file-clerk-only.
-- Severs irrational behavior from good inputs.
-- **Surgical unlearn**: only reactive keys, knowledge items, wisdom entries, and hypotheses that match the audited input are weakened or removed.
-- Contradicted hypotheses can themselves trigger an audit.
+Procedural, file-clerk-only. Surgical unlearn of matching items only.
+Contradicted hypotheses can trigger an audit.
+`export_audit_trail(path)` writes a human-readable summary of recent findings and unlearn events.
 
 ## Calibration
 
-Thought uncertainty is binned and compared against actual correctness. Summary available in `stats()["calibration"]`.
-
-## Unified event log
-
-Routings, promotions, demotions, hypotheses, probes, and surgical unlearns.
+Uncertainty is binned against correctness. A temperature scale is adjusted online so that high-uncertainty bins that are often wrong become less trusted. Current temperature and bin accuracies appear in `stats()`.
 
 ## Chaos probing
 
@@ -26,5 +21,4 @@ Prefers rejects closest to the current threshold.
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
-python benchmarks/eval_depth.py
 ```
