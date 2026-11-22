@@ -284,7 +284,7 @@ class NoiseSeparatedSystem:
         if len(self._recent_raw) >= 12:
             base = self._recent_raw[-1]
             dists = [np.linalg.norm(r - base) for r in self._recent_raw[-12:]]
-            self.gate_bypass = float(np.median(dists)) < self.bypass_dist
+            self.gate_bypass = float(np.median(dists)) < 0.15
         self._recent_scores.append(score)
         if len(self._recent_scores) > 40:
             self._recent_scores.pop(0)
