@@ -31,6 +31,11 @@ PARAM_SPACE = {
     "audit_every": [10**9, 15, 30, 60],
     "revalidate_interval": [20, 40, 80],
     "graph_mode": ["cascade", "blend", "thought_consults"],
+    "edge_w_thought": [0.5, 1.0, 1.5, 2.0],
+    "edge_w_knowledge": [0.5, 1.0, 1.5, 2.0],
+    "edge_w_wisdom": [0.5, 1.0, 1.5, 2.5],
+    "edge_w_reactive": [0.3, 0.7, 1.0, 1.5],
+    "edge_w_trauma": [0.1, 0.3, 0.5],
 }
 
 
@@ -57,6 +62,13 @@ class AdaptiveTuner:
         s = NoiseSeparatedSystem(config=cfg)
         if "graph_mode" in overrides:
             s.graph_mode = overrides["graph_mode"]
+        s.edge_weights = {
+            "thought": overrides.get("edge_w_thought", 1.0),
+            "knowledge": overrides.get("edge_w_knowledge", 1.2),
+            "wisdom": overrides.get("edge_w_wisdom", 1.5),
+            "reactive": overrides.get("edge_w_reactive", 1.0),
+            "trauma": overrides.get("edge_w_trauma", 0.4),
+        }
         if overrides.get("audit_every", 20) > 1000:
             s.audit_every = 10**9
         errors = []

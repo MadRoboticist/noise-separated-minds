@@ -527,8 +527,10 @@ class NoiseSeparatedSystem:
         # Default: blend all available votes
         if not votes:
             return None, "none"
-        # Weight: wisdom and knowledge higher, trauma lower (it is provisional)
-        weights = {"wisdom": 1.5, "knowledge": 1.2, "reactive": 1.0, "thought": 1.0, "trauma": 0.4}
+        # Learnable edge weights (set by tuner or left at defaults)
+        weights = getattr(self, "edge_weights", {
+            "wisdom": 1.5, "knowledge": 1.2, "reactive": 1.0, "thought": 1.0, "trauma": 0.4
+        })
         num = sum(votes[n] * weights.get(n, 1.0) for n in votes)
         den = sum(weights.get(n, 1.0) for n in votes)
         pred = num / den
