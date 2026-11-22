@@ -382,16 +382,18 @@ class NoiseSeparatedSystem:
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
             self._record(x, {"kind": "to_knowledge", "y": stored_y, **context})
 
-        # --- Muscle memory (Reactive): requires many repetitions (slow to form) ---
+        # --- Formation difficulty: knowledge (easy) < wisdom (harder) < reactive (hardest) ---
         # Thought is immediate; reactive is earned through sustained repetition.
         reactive_hits_needed = max(80, hits_needed * 20)
         if existing is not None and y is not None:
             high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
             if trauma and y is not None:
-                # Trauma is fast and separate; it is the primary audit target
+                # Trauma is fast. It seeds reactive (a shock becomes a reflex)
+                # and is the primary audit target.
                 err = abs(float(y) - float(existing.get("output", y))) if existing.get("output") is not None else 1.0
                 self.trauma.store(x, y, error=err, step=self._step)
+                self.reactive.store(x, y, strength=2.0)  # trauma contributes to reaction
                 self._record(x, {"kind": "trauma", "y": y, "error": err, **context})
             if high_repetition:
                 self.reactive.store(x, y)
