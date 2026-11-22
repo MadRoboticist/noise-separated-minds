@@ -156,7 +156,6 @@ class OnlineLinearPerspective(Perspective):
         pred = float(x_aug @ self.w)
         err = float(y) - pred
         self.w += self.lr * (err * x_aug - self.reg * self.w)
-        self.record_error(err)
 
     def predict(self, x: np.ndarray) -> Optional[float]:
         if self.w is None:

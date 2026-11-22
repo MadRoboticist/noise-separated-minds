@@ -112,7 +112,7 @@ class RandomnessGate:
         mad = np.median(np.abs(recent - med), axis=0) + 1e-6
         z = np.abs(x - med) / mad
         # high z => outlier relative to recent normal
-        outlier_frac = float(np.mean(z > 3.0))
+        outlier_frac = float(np.mean(z > 4.0))
         s = float(np.clip(1.0 - outlier_frac, 0.0, 1.0))
         if s >= 0.4:
             self._recent_accepted.append(x.copy())
@@ -136,12 +136,14 @@ class RandomnessGate:
             
 
         if len(self.recent_scores) >= 20:
-            # Set threshold near the 25th percentile of recent scores,
-            # gently pulled toward the base.
+            # For short-vector local scores the distribution is high and tight;
+            # keep the threshold closer to base so we do not over-reject.
             p25 = float(np.percentile(self.recent_scores, 25))
-            target = 0.7 * p25 + 0.3 * self.base_threshold
+            # Stronger pull toward base (0.6 instead of 0.3)
+            target = 0.4 * p25 + 0.6 * self.base_threshold
             self.threshold += self.adapt_rate * (target - self.threshold)
-            self.threshold = float(np.clip(self.threshold, 0.15, 0.7))
+            # Cap lower so short-vector mode stays permissive
+            self.threshold = float(np.clip(self.threshold, 0.15, 0.50))
 
     def is_noise(self, x: Union[np.ndarray, list], threshold: float = None) -> bool:
         thr = self.threshold if threshold is None else threshold
