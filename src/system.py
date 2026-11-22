@@ -22,6 +22,7 @@ class NoiseSeparatedSystem:
         self.cfg = cfg
 
         self.gate = RandomnessGate(base_threshold=cfg.noise_threshold)
+        self.noise_profile = NoiseProfile()
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.thought = ThoughtLayer()
