@@ -87,7 +87,15 @@ class Auditor:
 
             if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
-                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(2.0, clerk.demote_error_tol * 4.0):
+                if promoted is not None:
+                    recent_ys = [float(e.get("y")) for e in recent if e.get("y") is not None]
+                    if len(recent_ys) >= 3:
+                        rmin, rmax = min(recent_ys), max(recent_ys)
+                        # only flag if the new y is well outside the recent range
+                        outside = float(observed_y) < rmin - 1.0 or float(observed_y) > rmax + 1.0
+                    else:
+                        outside = abs(float(promoted) - float(observed_y)) > 1.5
+                    if outside:
                     finding = AuditFinding(
                         key, kind,
                         "Stored behavior contradicted later good observation",
