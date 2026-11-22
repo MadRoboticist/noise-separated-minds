@@ -236,12 +236,17 @@ class NoiseSeparatedSystem:
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
+        # Repetition-based bypass: if the same neighborhood keeps appearing, treat as clean
+        similar = self.short_term.find_similar(x, tol=0.5) if len(self.short_term.buffer) > 5 else None
+        if similar is not None and similar.get("hits", 0) >= 6:
+            self.gate_bypass = True
+        elif len(self._recent_scores) >= 30:
+            # also bypass if residual noise rate is very low
+            recent_noise = sum(1 for s in self._recent_scores[-30:] if s < self.gate.threshold)
+            self.gate_bypass = (recent_noise / 30) < 0.05
         self._recent_scores.append(score)
         if len(self._recent_scores) > 40:
             self._recent_scores.pop(0)
-        if len(self._recent_scores) >= 20:
-            med = float(np.median(self._recent_scores))
-            self.gate_bypass = med > self.gate.threshold + 0.15
         is_noise = (not self.gate_bypass) and (score < self.gate.threshold)
         self.gate.update(score, is_noise)
 
