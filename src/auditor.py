@@ -35,7 +35,7 @@ class Auditor:
             for e in events:
                 if "x" in e:
                     cand = np.asarray(e["x"], dtype=float).ravel()
-                    if cand.shape == x.shape and np.linalg.norm(cand - x) < 0.8:
+                    if cand.shape == x.shape and np.linalg.norm(cand - x) < 0.35:
                         trace = events
                         key = k
                         break
@@ -73,7 +73,7 @@ class Auditor:
 
             if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
-                if promoted is not None and abs(float(promoted) - float(observed_y)) > clerk.demote_error_tol:
+                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(0.45, clerk.demote_error_tol * 2.0):
                     finding = AuditFinding(
                         key, kind,
                         "Stored behavior contradicted later good observation",
