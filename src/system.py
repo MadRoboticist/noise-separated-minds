@@ -1,4 +1,4 @@
-"""File clerk with trace log for the procedural auditor."""
+"""File clerk. Auditor severs irrational behavior from good inputs."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -29,7 +29,7 @@ class NoiseSeparatedSystem:
         max_chaos: int = 5_000,
         chaos_promote_budget: float = 0.15,
         revalidate_interval: int = 40,
-        audit_every: int = 25,
+        audit_every: int = 20,
     ):
         self.gate = RandomnessGate(base_threshold=noise_threshold)
         self.short_term = ShortTermBuffer()
@@ -60,9 +60,8 @@ class NoiseSeparatedSystem:
         self._reentries = 0
         self._chaos_promotions = 0
         self._recent_agreements = []
-        # Trace: key -> list of events
         self._traces: Dict[str, List[Dict[str, Any]]] = {}
-        self._recent_inputs: List[np.ndarray] = []
+        self._recent_good: List[np.ndarray] = []  # structured inputs only
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:4], 3).tolist())
@@ -70,32 +69,33 @@ class NoiseSeparatedSystem:
     def _record(self, x: np.ndarray, event: Dict[str, Any]):
         key = self._trace_key(x)
         self._traces.setdefault(key, []).append({"step": self._step, **event})
-        if len(self._traces[key]) > 20:
-            self._traces[key] = self._traces[key][-20:]
-        self._recent_inputs.append(np.asarray(x))
-        if len(self._recent_inputs) > 100:
-            self._recent_inputs.pop(0)
+        if len(self._traces[key]) > 30:
+            self._traces[key] = self._traces[key][-30:]
 
     def get_trace(self, key: str) -> List[Dict[str, Any]]:
         return self._traces.get(key, [])
 
-    # --- re-file methods the auditor may call ---
+    # --- re-file interface used by auditor to sever irrational behavior ---
     def refile_demote(self, key: str):
-        # Remove matching reactive entries and weaken knowledge
-        # (simplified: clear a few reactive keys)
-        for k in list(self.reactive.table.keys())[:3]:
+        """Remove reactive mappings that may be causing irrational predictions."""
+        for k in list(self.reactive.table.keys())[:5]:
             self.reactive.table.pop(k, None)
 
     def refile_weaken_wisdom(self, key: str):
         for e in self.wisdom.entries:
-            e.confidence = max(0.0, e.confidence - 0.3)
+            e.confidence = max(0.0, e.confidence - 0.4)
 
     def refile_weaken_knowledge(self, key: str):
         self.knowledge.fade()
+        self.knowledge.fade()  # stronger sever
 
     def refile_to_thought(self, key: str):
-        # No-op placeholder; real re-injection would need the original x
-        pass
+        """Force the most recent good input matching this key back into Thought."""
+        for x in reversed(self._recent_good):
+            if self._trace_key(x) == key:
+                self.thought.observe(x, y=None)
+                self._record(x, {"kind": "refiled_to_thought"})
+                return
 
     def save(self, path: str):
         _save(self, path)
@@ -142,6 +142,11 @@ class NoiseSeparatedSystem:
         self._adapt_exploration(agreement)
 
         thr = self.gate.threshold
+        if not is_noise:
+            self._recent_good.append(x.copy())
+            if len(self._recent_good) > 50:
+                self._recent_good.pop(0)
+
         if score >= thr and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
             self.thought.observe(x, y)
@@ -165,7 +170,7 @@ class NoiseSeparatedSystem:
         item = self.knowledge.find_item(x)
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
         hyp_score = self.hypotheses.confirmation_score(x)
-        hits_needed = self.promote_hits - (1 if hyp_score > 0.5 else 0)
+        hits_needed = max(2, self.promote_hits - (1 if hyp_score > 0.5 else 0))
 
         if (
             existing is not None
@@ -195,9 +200,9 @@ class NoiseSeparatedSystem:
             self._check_demotions(x, y)
             self._revalidate_wisdom()
 
-        # Procedural audit on a recent input
-        if self._step % self.audit_every == 0 and self._recent_inputs and y is not None:
-            suspect = self._recent_inputs[-1]
+        # Audit only good (structured) inputs
+        if self._step % self.audit_every == 0 and self._recent_good and y is not None:
+            suspect = self._recent_good[-1]
             finding = self.auditor.audit_input(self, suspect, observed_y=y)
             if finding:
                 self.auditor.apply(self, finding)
@@ -263,6 +268,6 @@ class NoiseSeparatedSystem:
             "chaos": len(self.chaos),
             "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
-            "traces": len(self._traces),
+            "good_inputs_tracked": len(self._recent_good),
             "step": self._step,
         }
