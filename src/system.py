@@ -5,7 +5,8 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, TraumaStore, ChaosPile
+from .minds import ReactiveMind, TraumaStore
+from .mind_graph import MindGraph, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
@@ -26,7 +27,8 @@ class NoiseSeparatedSystem:
         self.short_term = ShortTermBuffer()
         self.reactive = ReactiveMind()
         self.trauma = TraumaStore()
-        self.graph_mode = 'blend'  # cascade | blend | thought_consults
+        self.graph_mode = 'blend'
+        self.graph = MindGraph()  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -524,17 +526,15 @@ class NoiseSeparatedSystem:
             self._record(x, {"kind": "predict", "pred": base, "via": "thought_consults"})
             return base, "thought_consults"
 
-        # Default: blend all available votes
+        # Default: full graph blend (every edge weighted)
         if not votes:
             return None, "none"
-        # Learnable edge weights (set by tuner or left at defaults)
-        weights = getattr(self, "edge_weights", {
-            "wisdom": 1.5, "knowledge": 1.2, "reactive": 1.0, "thought": 1.0, "trauma": 0.4
-        })
-        num = sum(votes[n] * weights.get(n, 1.0) for n in votes)
-        den = sum(weights.get(n, 1.0) for n in votes)
-        pred = num / den
-        via = "blend:" + "+".join(sorted(votes.keys()))
+        # Apply any learned edge overrides
+        if hasattr(self, "edge_weights"):
+            for name, w in self.edge_weights.items():
+                self.graph.set_weight(name, "output", w)
+        pred = self.graph.compute_output(votes)
+        via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
 
