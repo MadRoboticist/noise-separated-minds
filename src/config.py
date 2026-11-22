@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class SystemConfig:
     noise_threshold: float = 0.35
     promote_hits: int = 4
-    promote_score: float = 0.75
+    promote_score: float = 0.42  # matches typical gate scores for structured input (~0.5)
     min_agreement: float = 0.6
     min_age: int = 8
     knowledge_boost: float = 0.4
