@@ -1,4 +1,4 @@
-"""Thought ensemble with richer generative perspectives."""
+"""Thought ensemble + active ChaosPile."""
 
 from typing import Any, Dict, List, Optional
 import numpy as np
@@ -63,7 +63,6 @@ class Perspective:
         return 1.0
 
     def sample(self, x: np.ndarray) -> Optional[float]:
-        """Default: just the point prediction."""
         return self.predict(x)
 
     def clear(self):
@@ -151,8 +150,6 @@ class OnlineLinearPerspective(Perspective):
 
 
 class GaussianMixturePerspective(Perspective):
-    """Small GMM on a 1-D projection of x, modeling p(y | proj)."""
-
     def __init__(self, n_components: int = 3, max_obs: int = 2_000):
         super().__init__("gmm", max_obs)
         self.n_components = n_components
@@ -167,7 +164,6 @@ class GaussianMixturePerspective(Perspective):
             return
         proj = np.array([xi.mean() for xi in self.xs])
         ys = np.array([float(yi) if yi is not None else 0.0 for yi in self.ys])
-        # Initialize centers
         qs = np.linspace(10, 90, self.n_components)
         centers = np.percentile(proj, qs)
         for _ in range(6):
@@ -209,7 +205,6 @@ class GaussianMixturePerspective(Perspective):
         r = self._responsibilities(x)
         if r is None:
             return 1.0
-        # Mixture variance
         var = np.sum(r * (self.stds ** 2 + (self.means - np.sum(r * self.means)) ** 2))
         return float(np.sqrt(var + 1e-6))
 
@@ -222,8 +217,6 @@ class GaussianMixturePerspective(Perspective):
 
 
 class LatentResidualPerspective(Perspective):
-    """Projects x to 2-D via random projection, fits local residual model."""
-
     def __init__(self, latent_dim: int = 2, max_obs: int = 2_000):
         super().__init__("latent_residual", max_obs)
         self.latent_dim = latent_dim
@@ -260,7 +253,6 @@ class LatentResidualPerspective(Perspective):
         mu = self.predict(x)
         if mu is None:
             return None
-        # crude residual
         return float(mu + 0.1 * np.random.randn())
 
 
@@ -348,7 +340,6 @@ class AnalyticalMind:
         return float(np.sum(weights * preds))
 
     def sample_generative(self, x: np.ndarray) -> Optional[float]:
-        """Draw from the best generative perspective if available."""
         for p in self._active():
             if isinstance(p, (GaussianMixturePerspective, LatentResidualPerspective)):
                 return p.sample(x)
@@ -377,9 +368,13 @@ class AnalyticalMind:
 
 
 class ChaosPile:
+    """Rejected noise plus active probing."""
+
     def __init__(self, max_rejected: int = 5_000):
         self.rejected: List[np.ndarray] = []
         self.max_rejected = max_rejected
+        self.probe_successes = 0
+        self.probe_attempts = 0
 
     def reject(self, x: np.ndarray):
         self.rejected.append(np.asarray(x))
@@ -388,6 +383,17 @@ class ChaosPile:
 
     def sample(self, shape) -> np.ndarray:
         return np.random.randn(*shape)
+
+    def probe(self, n: int = 5) -> List[np.ndarray]:
+        """Actively sample candidates from the pile for re-testing."""
+        if not self.rejected:
+            return []
+        self.probe_attempts += 1
+        idx = np.random.choice(len(self.rejected), size=min(n, len(self.rejected)), replace=False)
+        return [self.rejected[i] for i in idx]
+
+    def record_probe_success(self):
+        self.probe_successes += 1
 
     def __len__(self):
         return len(self.rejected)
