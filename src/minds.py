@@ -443,7 +443,15 @@ class AnalyticalMind:
         weights = np.array(weights)
         weights /= weights.sum() + 1e-12
         if self.blender_mode == "greedy":
-            return float(preds[np.argmax(weights)])
+            # Pick the perspective with the lowest recent error, not the heuristic weight
+            best_i, best_err = 0, float("inf")
+            for i, p in enumerate(active):
+                if p.predict(x) is None:
+                    continue
+                e = p.recent_error() if hasattr(p, "recent_error") else float("inf")
+                if e < best_err:
+                    best_err, best_i = e, i
+            return float(preds[min(best_i, len(preds)-1)])
         if self.blender_mode == "mean":
             return float(np.mean(preds))
         return float(np.sum(weights * preds))
