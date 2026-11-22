@@ -1,4 +1,4 @@
-"""File clerk. Accepts SystemConfig. Tracks Wisdom reliability."""
+"""File clerk with richer audit export."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -16,7 +16,6 @@ from .config import SystemConfig
 class NoiseSeparatedSystem:
     def __init__(self, config: Optional[SystemConfig] = None, **kwargs):
         cfg = config or SystemConfig()
-        # Allow overrides
         for k, v in kwargs.items():
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
@@ -57,8 +56,8 @@ class NoiseSeparatedSystem:
         self.event_log: List[Dict[str, Any]] = []
         self._calib: List[tuple] = []
         self.temperature = 1.0
-        # Wisdom reliability: (confidence_bin, was_correct)
         self._wisdom_rel: List[tuple] = []
+        self._unlearn_details: List[Dict[str, Any]] = []
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -82,24 +81,46 @@ class NoiseSeparatedSystem:
         return self._traces.get(key, [])
 
     def unlearn(self, key: str):
+        dropped_reactive = []
         to_drop = [k for k in list(self.reactive.table.keys()) if key[:12] in str(k)]
         for k in to_drop[:5]:
+            dropped_reactive.append(str(k)[:40])
             self.reactive.table.pop(k, None)
+
+        weakened_k = 0
         for item in self.knowledge.items:
             if self._trace_key(item.x) == key:
                 item.strength *= 0.3
+                weakened_k += 1
+
+        weakened_w = 0
         for e in self.wisdom.entries:
             if self._trace_key(e.x) == key:
                 e.confidence = max(0.0, e.confidence - 0.6)
+                weakened_w += 1
+
+        deactivated_h = 0
         for h in self.hypotheses.hypotheses:
             if h.active and self._trace_key(h.x) == key:
                 h.active = False
                 h.rejections += 3
+                deactivated_h += 1
+
         self.short_term.buffer = [
             b for b in self.short_term.buffer
             if self._trace_key(b.get("x", np.zeros(1))) != key
         ]
-        self._log("unlearn_surgical", key=key)
+
+        detail = {
+            "step": self._step,
+            "key": key,
+            "dropped_reactive": dropped_reactive,
+            "weakened_knowledge": weakened_k,
+            "weakened_wisdom": weakened_w,
+            "deactivated_hypotheses": deactivated_h,
+        }
+        self._unlearn_details.append(detail)
+        self._log("unlearn_surgical", **detail)
 
     def refile_to_thought(self, key: str):
         for x in reversed(self._recent_good):
@@ -149,12 +170,18 @@ class NoiseSeparatedSystem:
     def export_audit_trail(self, path: str):
         with open(path, "w") as f:
             f.write("# Audit trail\n\n")
-            for finding in self.auditor.findings[-50:]:
-                f.write(f"- {finding.disconnect_at}: {finding.detail}\n")
-            f.write("\n## Recent unlearn events\n")
-            for e in self.event_log:
-                if "unlearn" in e.get("kind", ""):
-                    f.write(f"step {e['step']}: {e}\n")
+            f.write("## Findings\n")
+            for finding in self.auditor.findings[-40:]:
+                f.write(f"- key={finding.input_key} at={finding.disconnect_at}: {finding.detail}\n")
+            f.write("\n## Surgical unlearns\n")
+            for d in self._unlearn_details[-30:]:
+                f.write(
+                    f"step {d['step']} key={d['key']} "
+                    f"reactive_dropped={len(d['dropped_reactive'])} "
+                    f"knowledge_weakened={d['weakened_knowledge']} "
+                    f"wisdom_weakened={d['weakened_wisdom']} "
+                    f"hypotheses_deactivated={d['deactivated_hypotheses']}\n"
+                )
 
     def save(self, path: str):
         _save(self, path)
@@ -203,7 +230,6 @@ class NoiseSeparatedSystem:
                         self._log("hypothesis_triggered_audit")
 
         if y is not None:
-            # Wisdom reliability sample
             for e in self.wisdom.entries:
                 if np.linalg.norm(e.x - np.asarray(x).ravel()) < 0.2:
                     correct = abs(float(e.y) - float(y)) < self.demote_error_tol
@@ -364,6 +390,7 @@ class NoiseSeparatedSystem:
             "chaos": len(self.chaos),
             "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
+            "unlearns": len(self._unlearn_details),
             "event_log_len": len(self.event_log),
             "calibration": self.calibration_summary(),
             "wisdom_reliability": self.wisdom_reliability(),
