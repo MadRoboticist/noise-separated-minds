@@ -523,7 +523,8 @@ class NoiseSeparatedSystem:
         if y is None:
             return
         r = self.reactive.lookup(x)
-        if r is not None and abs(float(r) - float(y)) > self.demote_error_tol:
+        rv = r[0] if isinstance(r, tuple) else r
+        if rv is not None and abs(float(rv) - float(y)) > self.demote_error_tol:
             key = self.reactive._key(x)
             self.reactive.table.pop(key, None)
             self.knowledge.add_or_reinforce(x, y, boost=-0.5, step=self._step)
