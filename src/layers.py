@@ -45,7 +45,7 @@ class KnowledgeLayer:
     def add_or_reinforce(self, x: np.ndarray, y: Any, boost: float = 0.3, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
-            if np.allclose(item.x, x, atol=0.15):
+            if np.linalg.norm(item.x - x) < 1.0:
                 item.hits += 1
                 item.strength = max(0.0, min(3.0, item.strength + boost))
                 item.last_seen = step
@@ -66,7 +66,7 @@ class KnowledgeLayer:
                 alive.append(item)
         self.items = alive
 
-    def lookup(self, x: np.ndarray, tol: float = 0.2) -> Optional[Any]:
+    def lookup(self, x: np.ndarray, tol: float = 1.2) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
         best = None
         best_d = tol
@@ -77,7 +77,7 @@ class KnowledgeLayer:
                 best = item.y
         return best
 
-    def find_item(self, x: np.ndarray, tol: float = 0.15) -> Optional[KnowledgeItem]:
+    def find_item(self, x: np.ndarray, tol: float = 1.0) -> Optional[KnowledgeItem]:
         x = np.asarray(x, dtype=float).ravel()
         for item in self.items:
             if np.linalg.norm(item.x - x) < tol:

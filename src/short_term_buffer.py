@@ -25,7 +25,7 @@ class ShortTermBuffer:
         """Relaxed tolerance so noisy versions of the same pattern accumulate hits."""
         x = np.asarray(x).ravel()
         for item in reversed(self.buffer):
-            if item["x"].shape == x.shape and np.allclose(item["x"], x, atol=tol):
+            if item["x"].shape == x.shape and np.linalg.norm(item["x"] - x) < tol * np.sqrt(len(x)):
                 item["hits"] += 1
                 return item
         return None

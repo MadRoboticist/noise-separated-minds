@@ -460,7 +460,8 @@ class NoiseSeparatedSystem:
         if k is not None:
             self._record(x, {"kind": "predict", "pred": k, "via": "knowledge"})
             return k, "knowledge"
-        if self.gate.score(x) < self.gate.threshold:
+        # On short vectors the gate's structure tests are unreliable; do not refuse to predict
+        if len(np.asarray(x).ravel()) >= 16 and self.gate.score(x) < self.gate.threshold:
             return self.chaos.sample(getattr(x, "shape", (1,))), "chaos"
         pred = self.thought.sample(x)
         self._record(x, {"kind": "predict", "pred": pred, "via": "thought"})

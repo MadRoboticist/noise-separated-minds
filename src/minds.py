@@ -17,8 +17,24 @@ class ReactiveMind:
             self.table.pop(next(iter(self.table)))
         self.table[self._key(x)] = y
 
-    def lookup(self, x: np.ndarray) -> Optional[Any]:
-        return self.table.get(self._key(x))
+    def lookup(self, x: np.ndarray, tol: float = 0.6) -> Optional[Any]:
+        exact = self.table.get(self._key(x))
+        if exact is not None:
+            return exact
+        x = np.asarray(x, dtype=float).ravel()
+        best, best_d = None, tol
+        for k, v in self.table.items():
+            # keys are raw bytes of earlier vectors; reconstruct only if length matches
+            try:
+                xi = np.frombuffer(k, dtype=float)
+                if xi.shape != x.shape:
+                    continue
+                d = np.linalg.norm(xi - x)
+                if d < best_d:
+                    best_d, best = d, v
+            except Exception:
+                continue
+        return best
 
     def __len__(self):
         return len(self.table)
@@ -309,12 +325,10 @@ class AnalyticalMind:
             OnlineLinearPerspective(max_obs=max_obs),
             NearestNeighborPerspective(k=5, max_obs=max_obs),
             TinyMLPPerspective(max_obs=max_obs),
-            OnlineLinearPerspective(max_obs=max_obs),  # noise-path linear
         ]
         self.perspectives[1].name = "nn_k5"
         self.perspectives[2].name = "mlp"
-        self.perspectives[3].name = "linear_noise"
-        self.blender_mode = "accuracy"
+        self.blender_mode = "greedy"
         self.collapse_threshold = collapse_threshold
         self.events: List[str] = []
 
