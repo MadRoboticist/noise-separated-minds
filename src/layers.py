@@ -78,8 +78,10 @@ class KnowledgeLayer:
                 alive.append(item)
         self.items = alive
 
-    def lookup(self, x: np.ndarray, tol: float = 1.2) -> Optional[Any]:
+    def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
+        if tol is None:
+            tol = 0.2 * np.sqrt(len(x))
         best = None
         best_d = tol
         for item in self.items:
@@ -144,8 +146,10 @@ class WisdomLayer:
                 return
         self.entries.append(WisdomEntry(x, y, confidence, step))
 
-    def lookup(self, x: np.ndarray, tol: float = 0.5) -> Optional[Any]:
+    def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
         x = np.asarray(x, dtype=float).ravel()
+        if tol is None:
+            tol = 0.15 * np.sqrt(len(x))
         for e in self.entries:
             if e.x.shape == x.shape and np.linalg.norm(e.x - x) < tol and e.confidence >= self.min_confidence:
                 return e.y

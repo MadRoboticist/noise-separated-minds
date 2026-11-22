@@ -20,7 +20,8 @@ class ReactiveMind:
         for k in list(self.table.keys()):
             try:
                 xi = np.frombuffer(k, dtype=float)
-                if xi.shape == x.shape and np.linalg.norm(xi - x) < 0.6:
+                tol = 0.15 * np.sqrt(len(x))
+                if xi.shape == x.shape and np.linalg.norm(xi - x) < tol:
                     prev = self.table[k]
                     # Accumulate a running mean of y, do not store the sample
                     old_y = prev[0] if isinstance(prev, tuple) else prev
@@ -35,11 +36,13 @@ class ReactiveMind:
             self.table.pop(next(iter(self.table)))
         self.table[self._key(x)] = (float(y), strength, 1)
 
-    def lookup(self, x: np.ndarray, tol: float = 0.6) -> Optional[Any]:
+    def lookup(self, x: np.ndarray, tol: float = None) -> Optional[Any]:
+        x = np.asarray(x, dtype=float).ravel()
+        if tol is None:
+            tol = 0.15 * np.sqrt(len(x))
         exact = self.table.get(self._key(x))
         if exact is not None:
             return exact[0] if isinstance(exact, tuple) else exact
-        x = np.asarray(x, dtype=float).ravel()
         best, best_d = None, tol
         for k, v in self.table.items():
             # keys are raw bytes of earlier vectors; reconstruct only if length matches
@@ -95,7 +98,7 @@ class ReactiveMind:
                 continue
             if xi.shape != x.shape:
                 continue
-            if np.linalg.norm(xi - x) < 0.6:
+            if np.linalg.norm(xi - x) < 0.15 * np.sqrt(len(x)):
                 strength = val[1] if isinstance(val, tuple) else 1.0
                 hits = val[2] if isinstance(val, tuple) and len(val) > 2 else 1
                 best = max(best, min(1.0, strength / 3.0) * min(1.0, hits / 25.0))
