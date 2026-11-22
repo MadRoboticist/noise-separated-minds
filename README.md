@@ -4,7 +4,7 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Core Idea
 
-1. **Randomness Gate**: Reject pure noise before it can skew any distribution.
+1. **Randomness Gate**: Multi-test detector (spectral flatness, histogram entropy, autocorrelation, difference entropy, runs) that rejects pure noise.
 2. **Thought**: Short-term figuring (analytical ensemble). Can be lost.
 3. **Knowledge**: Medium-term patterns. Can fade or be weakened.
 4. **Wisdom**: Long-term. Count only grows; confidence is checked and can fall.
@@ -14,25 +14,21 @@ Unsupervised architecture that separates pure randomness from structured signal,
 ## Feedback loops
 
 - Promotion requires hit-count, structure score, **and cross-perspective agreement**
-- Demotion on high error (Reactive removed, Knowledge weakened)
+- Demotion on high error
 - Wisdom confidence checked on every matching observation (never deleted)
-- **Adaptive exploration**: probability rises when agreement is low or chaos re-entries succeed; falls when the system is confident. Bounded between `explore_min` and `explore_max`.
+- Adaptive exploration rate
 - Chaos re-entry
-- Blender uses recent per-perspective accuracy
-
-## Perspectives inside Thought
-
-Local weighted, nearest-neighbor (k=1,3,5), online linear (two learning rates), wider local. Toggleable.
+- Accuracy-weighted blender
 
 ## Run
 
 ```bash
 pip install -r requirements.txt
 python examples/demo.py
+python tests/test_gate.py
 python tests/test_layers.py
-python benchmarks/ensemble_search.py
 ```
 
 ## Status
 
-Prototype with agreement-gated promotion, accuracy-weighted blending, adaptive exploration, and asymmetry tests.
+Prototype with robust multi-test randomness gate, agreement-gated promotion, adaptive exploration, and asymmetry tests.
