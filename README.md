@@ -9,7 +9,7 @@ Unsupervised architecture that separates pure randomness (chaos) from structured
 3. **Consolidation clerk**: Promote only vetted, repeatable structure.
 4. **Long-term stores**:
    - Reactive: near-zero-variance deterministic functions
-   - Analytical: modest generative model of structured conditional distributions
+   - Analytical: ensemble of small perspectives on the filtered stream
    - Chaos: residual pure randomness (no model)
 
 ## Why
@@ -21,10 +21,10 @@ Pure randomness cannot be accounted for inside a pdf without dragging coefficien
 - Randomness gate (spectral flatness + entropy)
 - Short-term buffer with hit counting
 - Reactive mind: exact-match deterministic table
-- Analytical mind: local weighted average / nearest-neighbor conditional model (only on vetted inputs)
+- Analytical mind: 7 toggleable perspectives (local weighted, nn_k1, nn_k3, prototype, linear projection, median neighbor, exp decay) with weighted / greedy / mean blender
 - Chaos pile: rejection + pure noise sampler
 - Promotion of high-consistency patterns to reactive
-- Basic tests and demo
+- Basic tests, demo, and ensemble subset search benchmark
 
 ## Run
 
@@ -32,8 +32,9 @@ Pure randomness cannot be accounted for inside a pdf without dragging coefficien
 pip install -r requirements.txt
 python examples/demo.py
 python tests/test_basic.py
+python benchmarks/ensemble_search.py
 ```
 
 ## Status
 
-Working prototype. Analytical model is nonparametric and lightweight; next steps could include a small parametric generative model or stronger consolidation/demotion.
+Working prototype with internal ensemble. Perspectives can be enabled/disabled; the benchmark searches subsets for best MSE on a synthetic structured task.
