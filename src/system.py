@@ -57,6 +57,7 @@ class NoiseSeparatedSystem:
 
         self._step = 0
         self._err_window = []
+        self._input_err_window = []
         self._checkpoint = None
         self._checkpoint_step = 0
         self._reentries = 0
@@ -249,6 +250,10 @@ class NoiseSeparatedSystem:
         self._step += 1
         if self._prev_x is not None:
             self.next_input.observe(self._prev_x, x)
+            if self.next_input.last_error is not None:
+                self._input_err_window.append(self.next_input.last_error)
+                if len(self._input_err_window) > 100:
+                    self._input_err_window.pop(0)
         self._prev_x = np.asarray(x, dtype=float).ravel().copy()
         if y is not None:
             pred, _ = self.predict(x)

@@ -615,6 +615,7 @@ class NextInputLinear:
         self.reg = reg
         self.W = None  # (dim, dim+1) including bias
         self._step = 0
+        self.last_error = None
 
     def observe(self, x_t, x_next):
         if x_next is None:
@@ -629,6 +630,7 @@ class NextInputLinear:
         x_aug = np.append(x_t, 1.0)
         pred = self.W @ x_aug
         err = x_next - pred
+        self.last_error = float(np.mean(np.abs(err)))
         self._step += 1
         lr = self.lr / (1.0 + 0.001 * self._step)
         # clipped gradient step
