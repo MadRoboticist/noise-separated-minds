@@ -109,8 +109,10 @@ class WisdomLayer:
 
     def add(self, x: np.ndarray, y: Any, confidence: float = 1.0, step: int = 0):
         x = np.asarray(x, dtype=float).ravel()
+        # Coarse match so one pattern is one entry
         for e in self.entries:
-            if np.allclose(e.x, x, atol=1e-6):
+            if np.linalg.norm(e.x - x) < 0.5:
+                e.confidence = max(e.confidence, confidence)
                 return
         self.entries.append(WisdomEntry(x, y, confidence, step))
 
