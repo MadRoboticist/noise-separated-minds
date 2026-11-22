@@ -10,11 +10,12 @@ import numpy as np
 
 
 class AuditFinding:
-    def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str):
+    def __init__(self, input_key: str, disconnect_at: str, detail: str, action: str, distance: float = None):
         self.input_key = input_key
         self.disconnect_at = disconnect_at
         self.detail = detail
         self.action = action
+        self.distance = distance
 
 
 class Auditor:
@@ -23,6 +24,30 @@ class Auditor:
         self._window_count = 0
         self._window_start = 0
         self.findings: List[AuditFinding] = []
+
+
+    def _nearest_distance(self, clerk, x):
+        """Distance from x to the nearest stored pattern in any layer."""
+        x = np.asarray(x, dtype=float).ravel()
+        best = None
+        for layer in (clerk.knowledge, clerk.wisdom):
+            items = getattr(layer, "items", None) or getattr(layer, "entries", [])
+            for item in items:
+                xi = getattr(item, "x", None)
+                if xi is not None and xi.shape == x.shape:
+                    d = float(np.linalg.norm(xi - x))
+                    if best is None or d < best:
+                        best = d
+        for k in clerk.reactive.table:
+            try:
+                xi = np.frombuffer(k, dtype=float)
+                if xi.shape == x.shape:
+                    d = float(np.linalg.norm(xi - x))
+                    if best is None or d < best:
+                        best = d
+            except Exception:
+                continue
+        return best
 
     def audit_input(self, clerk, x: np.ndarray, observed_y: Optional[float] = None) -> Optional[AuditFinding]:
         # Rate limit: at most max_per_window findings per 50 steps
@@ -78,7 +103,8 @@ class Auditor:
                 finding = AuditFinding(
                     key, "gate",
                     "Structured input was routed to chaos",
-                    "sever_and_unlearn"
+                    "sever_and_unlearn",
+                    distance=self._nearest_distance(clerk, x)
                 )
                 self.findings.append(finding)
                 self._window_count += 1
@@ -90,7 +116,8 @@ class Auditor:
                     finding = AuditFinding(
                         key, "prediction",
                         f"Irrational prediction {pred} on structured input",
-                        "sever_and_unlearn"
+                        "sever_and_unlearn",
+                        distance=self._nearest_distance(clerk, x)
                     )
                     self.findings.append(finding)
                     return finding
@@ -109,7 +136,8 @@ class Auditor:
                         finding = AuditFinding(
                             key, kind,
                             "Stored behavior contradicted later good observation",
-                            "sever_and_unlearn"
+                            "sever_and_unlearn",
+                            distance=self._nearest_distance(clerk, x)
                         )
                         self.findings.append(finding)
                         return finding
