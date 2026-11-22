@@ -652,14 +652,14 @@ class NoiseSeparatedSystem:
                 via = "reactive"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
                 return pred, via
-        if "wisdom" in raw:
-            pred = raw["wisdom"]
-            via = "wisdom"
-            self._record(x, {"kind": "predict", "pred": pred, "via": via})
-            return pred, via
         if "knowledge" in raw:
             pred = raw["knowledge"]
             via = "knowledge"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        if "wisdom" in raw:
+            pred = raw["wisdom"]
+            via = "wisdom"
             self._record(x, {"kind": "predict", "pred": pred, "via": via})
             return pred, via
         pred = self.graph.compute_output(votes) if votes else raw.get("thought")
