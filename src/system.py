@@ -604,8 +604,8 @@ class NoiseSeparatedSystem:
 
         # Exploration decays so we stop injecting noise once identified
         # LQR disabled: identification was real but the steps increased error
-        explore_amp = 0.0
-        use_lqr = False
+        explore_amp = 0.004 * np.exp(-self._step / 300.0)
+        use_lqr = self.edge_lqr.confident()
         dw = {k: 0.0 for k in ctrl}
 
         # Excite one control per step so the effect is identifiable
