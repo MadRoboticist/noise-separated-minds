@@ -314,9 +314,20 @@ class NoiseSeparatedSystem:
         if is_noise:
             self.chaos.reject(x)
             self._record(x, {"kind": "routed_chaos", **context})
-            return "chaos"
+            # Soft path: still learn, but with attenuated weight
+            w = self.gate.residual_weight(x, getattr(self, "_recent_residuals", None))
+            self._soft_observe(x, y, w)
+            return "soft_noise"
 
         self.thought.observe(x, y)
+        if y is not None:
+            pred = self.thought.sample(x)
+            if pred is not None:
+                if not hasattr(self, "_recent_residuals"):
+                    self._recent_residuals = []
+                self._recent_residuals.append(abs(float(pred) - float(y)))
+                if len(self._recent_residuals) > 50:
+                    self._recent_residuals.pop(0)
         self.short_term.add(x, score, y)
         self._record(x, {"kind": "to_thought", "y": y, **context})
 
@@ -444,6 +455,32 @@ class NoiseSeparatedSystem:
         if k is not None and abs(float(k) - float(y)) > self.demote_error_tol:
             self.knowledge.add_or_reinforce(x, y, boost=-0.4, step=self._step)
             self._log("weaken_knowledge")
+
+
+    def _soft_observe(self, x, y, weight: float):
+        """Attenuated update: still trains Thought, but scales the linear step."""
+        # Temporarily scale the linear learning rate
+        linear = None
+        for p in self.thought.mind.perspectives:
+            if p.name == "online_linear":
+                linear = p
+                break
+        old_lr = None
+        if linear is not None and hasattr(linear, "lr"):
+            old_lr = linear.lr
+            linear.lr = old_lr * weight
+        self.thought.observe(x, y)
+        if linear is not None and old_lr is not None:
+            linear.lr = old_lr
+        # Track residual for the profile
+        if y is not None:
+            pred = self.thought.sample(x)
+            if pred is not None:
+                if not hasattr(self, "_recent_residuals"):
+                    self._recent_residuals = []
+                self._recent_residuals.append(abs(float(pred) - float(y)))
+                if len(self._recent_residuals) > 50:
+                    self._recent_residuals.pop(0)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)

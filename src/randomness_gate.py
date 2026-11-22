@@ -169,3 +169,20 @@ class RandomnessGate:
             "threshold": self.threshold,
             "residual_noise_rate": self.residual_noise_rate(),
         }
+
+
+    def residual_weight(self, x, recent_residuals=None) -> float:
+        """Soft weight in [0.05, 1.0] based on local residual profile.
+        High residual relative to recent profile -> lower weight, not zero.
+        """
+        if recent_residuals is None or len(recent_residuals) < 8:
+            return 1.0
+        med = float(np.median(recent_residuals))
+        mad = float(np.median(np.abs(np.array(recent_residuals) - med))) + 1e-6
+        # Use the short score as a proxy for how structured this point is
+        s = self.score(x)
+        # Convert structure deficit into a soft weight
+        deficit = max(0.0, self.threshold - s)
+        # Also look at residual magnitude if we have it
+        weight = float(np.clip(1.0 - 1.5 * deficit, 0.05, 1.0))
+        return weight
