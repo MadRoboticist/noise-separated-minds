@@ -1,4 +1,4 @@
-"""System with independent auditor."""
+"""System with generative hypotheses influencing promotion."""
 
 import numpy as np
 from .randomness_gate import RandomnessGate
@@ -7,6 +7,7 @@ from .minds import ReactiveMind, ChaosPile
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
 from .auditor import Auditor
+from .hypotheses import HypothesisTracker
 
 
 class NoiseSeparatedSystem:
@@ -39,6 +40,7 @@ class NoiseSeparatedSystem:
         self.wisdom = WisdomLayer()
         self.chaos = ChaosPile(max_rejected=max_chaos)
         self.auditor = Auditor(error_tol=demote_error_tol)
+        self.hypotheses = HypothesisTracker()
 
         self.promote_hits = promote_hits
         self.promote_score = promote_score
@@ -83,12 +85,21 @@ class NoiseSeparatedSystem:
             return True
         return (self._chaos_promotions / max(self._step, 1)) < self.chaos_promote_budget
 
+    def _propose_hypothesis(self, x):
+        """Draw a generative sample and register it as a hypothesis."""
+        y_hat = self.thought.mind.sample_generative(x)
+        if y_hat is not None:
+            self.hypotheses.propose(x, y_hat, self._step)
+
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
         score = self.gate.score(x)
         is_noise = score < self.gate.threshold
         self.gate.update(score, is_noise)
+
+        # Update existing hypotheses with this observation
+        self.hypotheses.observe(x, y, self._step)
 
         if y is not None:
             if not self.wisdom.check(x, y, tol=self.demote_error_tol, step=self._step):
@@ -102,6 +113,7 @@ class NoiseSeparatedSystem:
         if score >= thr and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
             self.thought.observe(x, y)
+            self._propose_hypothesis(x)
             return "explored_chaos"
 
         if is_noise:
@@ -110,20 +122,30 @@ class NoiseSeparatedSystem:
 
         self.thought.observe(x, y)
         self.short_term.add(x, score, y)
+        # Occasionally propose a generative hypothesis
+        if self._step % 5 == 0:
+            self._propose_hypothesis(x)
 
         existing = self.short_term.find_similar(x)
         item = self.knowledge.find_item(x)
         age_ok = item is not None and (self._step - item.first_seen) >= self.min_age
+        hyp_score = self.hypotheses.confirmation_score(x)
+
+        # Hypothesis confirmation can relax the hit requirement slightly
+        hits_needed = self.promote_hits
+        if hyp_score > 0.5:
+            hits_needed = max(2, self.promote_hits - 1)
 
         if (
             existing is not None
-            and existing["hits"] >= self.promote_hits
+            and existing["hits"] >= hits_needed
             and score >= self.promote_score
             and agreement >= self.min_agreement
             and self._chaos_budget_ok()
         ):
             stored_y = y if y is not None else existing.get("output")
-            self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
+            boost = self.knowledge_boost + 0.2 * hyp_score
+            self.knowledge.add_or_reinforce(x, stored_y, boost=boost, step=self._step)
             if age_ok:
                 item = self.knowledge.find_item(x)
                 if item and item.strength >= self.wisdom_strength:
@@ -198,6 +220,7 @@ class NoiseSeparatedSystem:
             "wisdom_active": self.wisdom.active_count,
             "reactive": len(self.reactive),
             "chaos": len(self.chaos),
+            "hypotheses_active": self.hypotheses.active_count(),
             "auditor_findings": len(self.auditor.findings),
             "explore_prob": round(self.explore_prob, 4),
             "gate_threshold": round(self.gate.threshold, 3),
