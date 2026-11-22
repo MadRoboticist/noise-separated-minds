@@ -725,8 +725,8 @@ class NoiseSeparatedSystem:
             # Use the raw thought prediction, not the mix-contaminated vote
             pred = raw["thought"]
             via = "thought"
-                self._record(x, {"kind": "predict", "pred": pred, "via": via})
-                return pred, via
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
         pred = self.graph.compute_output(votes)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
