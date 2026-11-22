@@ -358,16 +358,16 @@ class NoiseSeparatedSystem:
             self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
             self._record(x, {"kind": "to_knowledge", "y": stored_y, **context})
 
-        # --- Muscle memory (Reactive): pure repetition OR trauma ---
+        # --- Muscle memory (Reactive): requires many repetitions (slow to form) ---
+        # Thought is immediate; reactive is earned through sustained repetition.
+        reactive_hits_needed = max(40, hits_needed * 12)
         if existing is not None and y is not None:
-            high_repetition = existing["hits"] >= max(2, hits_needed - 1) and score >= self.promote_score
+            high_repetition = existing["hits"] >= reactive_hits_needed and score >= self.promote_score
             trauma = self._is_trauma(x, y, existing)
             if high_repetition or trauma:
                 self.reactive.store(x, y)
                 self._record(x, {"kind": "muscle_memory", "via": "trauma" if trauma else "repetition", **context})
-                # Pure muscle memory does not become Wisdom, but Knowledge already has it
-                if high_repetition and self._early_disagreement[self._coarse_key(x)] < 2:
-                    return "muscle_memory"
+                # Do not early-return; let knowledge and wisdom still be considered
 
         # --- Knowledge (still the medium-term store) ---
         if (
@@ -382,15 +382,26 @@ class NoiseSeparatedSystem:
             self.knowledge.add_or_reinforce(x, stored_y, boost=boost, step=self._step)
             self._record(x, {"kind": "promoted_knowledge", "y": stored_y, **context})
 
-            # --- Wisdom: only if it required earlier deliberation and is now consistent ---
-            had_deliberation = self._early_disagreement[self._coarse_key(x)] >= 2
-            now_consistent = agreement >= self.min_agreement and age_ok
-            if had_deliberation and now_consistent:
-                item = self.knowledge.find_item(x)
-                if item and item.strength >= self.wisdom_strength * 0.7:
-                    self.wisdom.add(x, stored_y, confidence=item.strength, step=self._step)
-                    self._record(x, {"kind": "promoted_wisdom", "y": stored_y, **context})
-                    return "promoted_wisdom"
+            # --- Wisdom: self-observation across layers ---
+            # Forms only when thought, knowledge, and (if present) reactive
+            # agree on the same output after sustained consistency.
+            # Chaos involvement is recorded but does not block.
+            thought_pred = self.thought.sample(x)
+            know_item = self.knowledge.find_item(x)
+            react_val = self.reactive.lookup(x, tol=0.4)
+            layers_agree = False
+            if thought_pred is not None and know_item is not None and stored_y is not None:
+                t_ok = abs(float(thought_pred) - float(stored_y)) < 0.3
+                k_ok = abs(float(know_item.y) - float(stored_y)) < 0.3
+                r_ok = (react_val is None) or (abs(float(react_val) - float(stored_y)) < 0.3)
+                sustained = existing["hits"] >= max(15, hits_needed * 4)
+                layers_agree = t_ok and k_ok and r_ok and sustained and age_ok
+            if layers_agree:
+                conf = know_item.strength if know_item else 1.0
+                self.wisdom.add(x, stored_y, confidence=conf, step=self._step)
+                self._record(x, {"kind": "promoted_wisdom", "y": stored_y,
+                                 "via": "self_observation", **context})
+                return "promoted_wisdom"
             return "promoted_knowledge"
 
         if self._step % 6 == 0:
