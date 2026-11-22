@@ -631,8 +631,9 @@ class NoiseSeparatedSystem:
             for name, w in self.edge_weights.items():
                 self.graph.set_weight(name, "output", w)
         pred = self.graph.compute_output(votes)
-        if pred is not None:
-            pred = float(pred) + self.feedback.correct(x)
+        if pred is not None and self.feedback._step > 30:
+            # Small fraction only; full correction was adding noise
+            pred = float(pred) + 0.15 * self.feedback.correct(x)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
