@@ -1,7 +1,8 @@
-"""File clerk with surgical unlearn, calibration, and hypothesis-auditor coupling."""
+"""File clerk with active calibration and audit export."""
 
 import numpy as np
 from typing import Dict, List, Any, Optional
+from collections import defaultdict
 from .randomness_gate import RandomnessGate
 from .short_term_buffer import ShortTermBuffer
 from .minds import ReactiveMind, ChaosPile
@@ -63,8 +64,8 @@ class NoiseSeparatedSystem:
         self._traces: Dict[str, List[Dict[str, Any]]] = {}
         self._recent_good: List[np.ndarray] = []
         self.event_log: List[Dict[str, Any]] = []
-        # Simple calibration: track (predicted_uncertainty_bin, was_correct)
         self._calib: List[tuple] = []
+        self.temperature = 1.0  # active calibration scale
 
     def _trace_key(self, x: np.ndarray) -> str:
         return str(np.round(np.asarray(x).ravel()[:6], 3).tolist())
@@ -88,34 +89,23 @@ class NoiseSeparatedSystem:
         return self._traces.get(key, [])
 
     def unlearn(self, key: str):
-        """Surgical unlearn: only items matching the key where possible."""
-        # Reactive: drop only keys that match the trace key pattern (best-effort)
         to_drop = [k for k in list(self.reactive.table.keys()) if key[:12] in str(k)]
         for k in to_drop[:5]:
             self.reactive.table.pop(k, None)
-
-        # Knowledge: weaken only matching items
         for item in self.knowledge.items:
             if self._trace_key(item.x) == key:
                 item.strength *= 0.3
-
-        # Wisdom: reduce confidence only on matching entries
         for e in self.wisdom.entries:
             if self._trace_key(e.x) == key:
                 e.confidence = max(0.0, e.confidence - 0.6)
-
-        # Hypotheses: deactivate those matching the key
         for h in self.hypotheses.hypotheses:
             if h.active and self._trace_key(h.x) == key:
                 h.active = False
                 h.rejections += 3
-
-        # Short-term buffer
         self.short_term.buffer = [
             b for b in self.short_term.buffer
             if self._trace_key(b.get("x", np.zeros(1))) != key
         ]
-
         self._log("unlearn_surgical", key=key)
 
     def refile_to_thought(self, key: str):
@@ -130,15 +120,37 @@ class NoiseSeparatedSystem:
         self._calib.append((bin_id, correct))
         if len(self._calib) > 500:
             self._calib = self._calib[-500:]
+        # Active correction: adjust temperature so high-uncertainty bins
+        # are less trusted when they are often wrong
+        if len(self._calib) > 30 and self._step % 15 == 0:
+            summary = self.calibration_summary()
+            high = summary.get(4, summary.get(3, 0.5))
+            if high < 0.4:
+                self.temperature = min(2.5, self.temperature * 1.05)
+            elif high > 0.7:
+                self.temperature = max(0.5, self.temperature * 0.98)
 
     def calibration_summary(self) -> dict:
         if not self._calib:
             return {}
-        from collections import defaultdict
         bins = defaultdict(list)
         for b, c in self._calib:
             bins[b].append(c)
-        return {b: float(np.mean(v)) for b, v in sorted(bins.items())}
+        return {b: round(float(np.mean(v)), 3) for b, v in sorted(bins.items())}
+
+    def calibrated_uncertainty(self, raw: float) -> float:
+        return float(raw * self.temperature)
+
+    def export_audit_trail(self, path: str):
+        """Write a human-readable audit trail."""
+        with open(path, "w") as f:
+            f.write("# Audit trail\n\n")
+            for finding in self.auditor.findings[-50:]:
+                f.write(f"- {finding.disconnect_at}: {finding.detail}\n")
+            f.write("\n## Recent unlearn events\n")
+            for e in self.event_log:
+                if "unlearn" in e.get("kind", ""):
+                    f.write(f"step {e['step']}: {e}\n")
 
     def save(self, path: str):
         _save(self, path)
@@ -178,7 +190,6 @@ class NoiseSeparatedSystem:
         active_names = self.thought.mind.active_names
         self.hypotheses.observe(x, y, self._step)
 
-        # Check for contradicted hypotheses — treat as irrational signal
         if y is not None:
             for h in self.hypotheses.hypotheses:
                 if not h.active and h.rejections >= 2 and self._trace_key(h.x) == self._trace_key(x):
@@ -195,9 +206,8 @@ class NoiseSeparatedSystem:
         agreement = self.thought.mind.agreement(x) if len(self.thought) > 2 else 0.5
         self._adapt_exploration(agreement)
 
-        # Calibration sample
         if y is not None and len(self.thought) > 3:
-            unc = self.thought.uncertainty(x)
+            unc = self.calibrated_uncertainty(self.thought.uncertainty(x))
             pred = self.thought.sample(x)
             if pred is not None:
                 self.record_calibration(unc, abs(float(pred) - float(y)) < self.demote_error_tol)
@@ -208,7 +218,12 @@ class NoiseSeparatedSystem:
             if len(self._recent_good) > 50:
                 self._recent_good.pop(0)
 
-        context = {"score": round(score, 3), "agreement": round(agreement, 3), "active": active_names[:3]}
+        context = {
+            "score": round(score, 3),
+            "agreement": round(agreement, 3),
+            "active": active_names[:3],
+            "temp": round(self.temperature, 2),
+        }
 
         if score >= thr and np.random.rand() < self.explore_prob:
             self.chaos.reject(x)
@@ -342,5 +357,6 @@ class NoiseSeparatedSystem:
             "auditor_findings": len(self.auditor.findings),
             "event_log_len": len(self.event_log),
             "calibration": self.calibration_summary(),
+            "temperature": round(self.temperature, 3),
             "step": self._step,
         }
