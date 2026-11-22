@@ -33,9 +33,16 @@ class NoiseSeparatedSystem:
         self._prev_x = None
         self.graph_mode = 'blend'
         self.graph = MindGraph()
-        self.edge_lqr = EdgeLQR(
-            ["thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"]
-        )  # cascade | blend | thought_consults
+        self.edge_lqr = EdgeLQR([
+            "thought->output", "knowledge->output", "reactive->output",
+            "wisdom->output", "trauma->output", "chaos->output",
+            "knowledge->thought", "wisdom->thought", "trauma->thought",
+            "thought->knowledge", "output->knowledge",
+            "knowledge->reactive", "output->reactive",
+            "knowledge->wisdom", "chaos->wisdom", "trauma->wisdom",
+            "fb_gain", "lr_linear", "lr_feedback", "lr_next",
+        ])
+        self.fb_gain = 0.3  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
         for p in self.thought.mind.perspectives:
             p.max_obs = cfg.max_obs
@@ -569,19 +576,38 @@ class NoiseSeparatedSystem:
         scale = 1.0 - 0.7 * self._input_uncertainty()
         step = 0.02 * signed * scale
 
-        # LQR-optimal step on output edges (falls back to small nudge if model is cold)
-        out_w = {src: self.graph.weight(src, "output")
-                 for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos")}
-        self.edge_lqr.observe(out_w, err)
-        lqr_dw = self.edge_lqr.step(out_w, err)
+        # Full control vector for the LQR
+        ctrl = {}
         for src in ("thought", "knowledge", "reactive", "wisdom", "trauma", "chaos"):
-            w = self.graph.weight(src, "output")
-            delta = lqr_dw.get(src, 0.0)
-            # exploration so the LQR can observe a response
-            explore = 0.01 * np.sin(self._step + hash(src) % 7)
-            delta = 0.6 * delta + 0.2 * step * (w - 0.15) + explore
-            if abs(delta) > 1e-6:
-                self.graph.set_weight(src, "output", max(0.0, min(1.0, w + delta)))
+            ctrl[f"{src}->output"] = self.graph.weight(src, "output")
+        for src, dst in [("knowledge", "thought"), ("wisdom", "thought"),
+                         ("trauma", "thought"), ("thought", "knowledge"),
+                         ("output", "knowledge"), ("knowledge", "reactive"),
+                         ("output", "reactive"), ("knowledge", "wisdom"),
+                         ("chaos", "wisdom"), ("trauma", "wisdom")]:
+            ctrl[f"{src}->{dst}"] = self.graph.weight(src, dst)
+        ctrl["fb_gain"] = self.fb_gain
+        ctrl["lr_linear"] = getattr(self.thought.mind, "lr", 0.05) if hasattr(self.thought, "mind") else 0.05
+        ctrl["lr_feedback"] = self.feedback.lr
+        ctrl["lr_next"] = self.next_input.lr
+        self.edge_lqr.observe(ctrl, err)
+        dw = self.edge_lqr.step(ctrl, err)
+
+        # Apply edge deltas
+        for key, delta in dw.items():
+            if "->" not in key:
+                continue
+            src, dst = key.split("->")
+            w = self.graph.weight(src, dst)
+            explore = 0.008 * np.sin(self._step + hash(key) % 5)
+            d = 0.5 * delta + explore
+            if abs(d) > 1e-6:
+                self.graph.set_weight(src, dst, max(0.0, min(1.0, w + d)))
+
+        # Apply scalar controls
+        self.fb_gain = float(np.clip(self.fb_gain + dw.get("fb_gain", 0.0), 0.0, 1.0))
+        self.feedback.lr = float(np.clip(self.feedback.lr + dw.get("lr_feedback", 0.0), 0.001, 0.2))
+        self.next_input.lr = float(np.clip(self.next_input.lr + dw.get("lr_next", 0.0), 0.001, 0.2))
 
         # Internal edges: nudge the ones that feed nodes which themselves
         # had non-trivial weight into the output
@@ -673,7 +699,7 @@ class NoiseSeparatedSystem:
         pred = self.graph.compute_output(votes)
         # Only correct when chaos did not vote; otherwise the residual is noise
         if pred is not None and self.feedback._step > 30 and "chaos" not in votes:
-            pred = float(pred) + 0.3 * self.feedback.correct(x)
+            pred = float(pred) + self.fb_gain * self.feedback.correct(x)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
