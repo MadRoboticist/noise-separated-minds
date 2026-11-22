@@ -82,7 +82,7 @@ class Auditor:
 
             if kind in ("promoted_wisdom", "promoted_knowledge", "to_knowledge", "muscle_memory") and observed_y is not None:
                 promoted = event.get("y")
-                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(0.8, clerk.demote_error_tol * 3.0):
+                if promoted is not None and abs(float(promoted) - float(observed_y)) > max(2.0, clerk.demote_error_tol * 4.0):
                     finding = AuditFinding(
                         key, kind,
                         "Stored behavior contradicted later good observation",
