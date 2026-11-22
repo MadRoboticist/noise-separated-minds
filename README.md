@@ -8,11 +8,15 @@ Unsupervised architecture that separates pure randomness from structured signal,
 
 ## Auditor
 
-Surgical unlearn. `export_audit_trail(path)` now includes the input key and counts of reactive drops, knowledge/wisdom weakenings, and hypothesis deactivations.
+Surgical unlearn with detailed export.
 
 ## Calibration
 
-Thought temperature scaling + Wisdom confidence reliability bins.
+Thought temperature scaling + Wisdom confidence reliability.
+
+## Chaos probing
+
+Prefers rejects that are both close to the current threshold **and** similar to recent good (structured) inputs.
 
 ## Comparative evaluation
 
@@ -20,7 +24,7 @@ Thought temperature scaling + Wisdom confidence reliability bins.
 python benchmarks/comparative.py
 ```
 
-Multi-seed, multi-noise sweep. Exits non-zero if the small filtered system under-performs on more than half the runs.
+Multi-seed, multi-noise sweep with pass/fail.
 
 ## Run
 
