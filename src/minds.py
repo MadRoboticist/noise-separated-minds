@@ -306,16 +306,14 @@ class TinyMLPPerspective(Perspective):
 class AnalyticalMind:
     def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
         self.perspectives: List[Perspective] = [
-            LocalWeightedPerspective(max_obs=max_obs),
-            NearestNeighborPerspective(k=3, max_obs=max_obs),
             OnlineLinearPerspective(max_obs=max_obs),
-            GaussianMixturePerspective(n_components=3, max_obs=max_obs),
-            LatentResidualPerspective(max_obs=max_obs),
-            LocalWeightedPerspective(bandwidth=1.0, max_obs=max_obs),
-            NearestNeighborPerspective(k=1, max_obs=max_obs),
+            NearestNeighborPerspective(k=5, max_obs=max_obs),
             TinyMLPPerspective(max_obs=max_obs),
+            TinyMLPPerspective(max_obs=max_obs),  # noise-path MLP
         ]
-        self.perspectives[5].name = "local_wide"
+        self.perspectives[1].name = "nn_k5"
+        self.perspectives[2].name = "mlp"
+        self.perspectives[3].name = "mlp_noise"
         self.blender_mode = "accuracy"
         self.collapse_threshold = collapse_threshold
         self.events: List[str] = []
