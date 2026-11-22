@@ -194,7 +194,11 @@ class OnlineLinearPerspective(Perspective):
         x_aug = np.append(x, 1.0)
         pred = float(x_aug @ self.w)
         err = float(y) - pred
-        self.w += self.lr * (err * x_aug - self.reg * self.w)
+        # Decaying learning rate
+        step = getattr(self, "_step", 0) + 1
+        self._step = step
+        lr = self.lr / (1.0 + 0.001 * step)
+        self.w += lr * (err * x_aug - self.reg * self.w)
 
     def predict(self, x: np.ndarray) -> Optional[float]:
         if self.w is None:
@@ -340,11 +344,15 @@ class TinyMLPPerspective(Perspective):
         h = np.tanh(self.W1 @ x + self.b1)
         pred = float(self.W2 @ h + self.b2)
         err = pred - float(y)
-        self.W2 -= self.lr * err * h
+        # L2 + gradient clip
+        reg = 1e-3
+        gW2 = np.clip(err * h + reg * self.W2, -1.0, 1.0)
         dh = err * self.W2 * (1 - h**2)
-        self.W1 -= self.lr * np.outer(dh, x)
-        self.b1 -= self.lr * dh
-        self.b2 -= self.lr * err
+        gW1 = np.clip(np.outer(dh, x) + reg * self.W1, -1.0, 1.0)
+        self.W2 -= self.lr * gW2
+        self.W1 -= self.lr * gW1
+        self.b1 -= self.lr * np.clip(dh, -1.0, 1.0)
+        self.b2 -= self.lr * np.clip(err, -1.0, 1.0)
 
     def predict(self, x):
         if self.W1 is None:

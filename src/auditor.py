@@ -18,10 +18,19 @@ class AuditFinding:
 
 
 class Auditor:
-    def __init__(self):
+    def __init__(self, max_per_window: int = 5):
+        self.max_per_window = max_per_window
+        self._window_count = 0
+        self._window_start = 0
         self.findings: List[AuditFinding] = []
 
     def audit_input(self, clerk, x: np.ndarray, observed_y: Optional[float] = None) -> Optional[AuditFinding]:
+        # Rate limit: at most max_per_window findings per 50 steps
+        if clerk._step - self._window_start > 50:
+            self._window_start = clerk._step
+            self._window_count = 0
+        if self._window_count >= self.max_per_window:
+            return None
         score = clerk.gate.score(x)
         # No longer require the point to be above threshold; look for any prior
         # neighborhood that now contradicts a later observation.
@@ -72,6 +81,7 @@ class Auditor:
                     "sever_and_unlearn"
                 )
                 self.findings.append(finding)
+                self._window_count += 1
                 return finding
 
             if kind == "predict" and observed_y is not None:
