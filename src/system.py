@@ -5,7 +5,7 @@ from typing import Dict, List, Any, Optional
 from collections import defaultdict
 from .randomness_gate import RandomnessGate, NoiseProfile
 from .short_term_buffer import ShortTermBuffer
-from .minds import ReactiveMind, TraumaStore, ChaosPile, FeedbackLinear
+from .minds import ReactiveMind, TraumaStore, ChaosPile, FeedbackLinear, NextInputLinear
 from .mind_graph import MindGraph
 from .layers import ThoughtLayer, KnowledgeLayer, WisdomLayer
 from .persistence import save as _save, load as _load
@@ -28,6 +28,8 @@ class NoiseSeparatedSystem:
         self.reactive = ReactiveMind()
         self.trauma = TraumaStore()
         self.feedback = FeedbackLinear()
+        self.next_input = NextInputLinear()
+        self._prev_x = None
         self.graph_mode = 'blend'
         self.graph = MindGraph()  # cascade | blend | thought_consults
         self.thought = ThoughtLayer()
@@ -245,6 +247,9 @@ class NoiseSeparatedSystem:
     def observe(self, x: np.ndarray, y=None):
         x = np.asarray(x)
         self._step += 1
+        if self._prev_x is not None:
+            self.next_input.observe(self._prev_x, x)
+        self._prev_x = np.asarray(x, dtype=float).ravel().copy()
         if y is not None:
             pred, _ = self.predict(x)
             if pred is not None:
@@ -559,6 +564,10 @@ class NoiseSeparatedSystem:
                 if w > 0.01 and src != "clerk":
                     delta = step * w * dst_w
                     self.graph.set_weight(src, dst, max(0.0, min(1.0, w + delta)))
+
+    def predict_next_input(self, x: np.ndarray):
+        """Feedforward: predict x_{t+1} from x_t."""
+        return self.next_input.predict(x)
 
     def predict(self, x: np.ndarray):
         x = np.asarray(x)

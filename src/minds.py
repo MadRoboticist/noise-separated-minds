@@ -604,3 +604,41 @@ class FeedbackLinear:
         if len(self.w) != len(x) + 1:
             return 0.0
         return float(np.append(x, 1.0) @ self.w)
+
+
+class NextInputLinear:
+    """Feedforward model: predicts x_{t+1} from x_t.
+    One linear map, online, with L2 and a clipped update.
+    """
+    def __init__(self, lr: float = 0.02, reg: float = 1e-3):
+        self.lr = lr
+        self.reg = reg
+        self.W = None  # (dim, dim+1) including bias
+        self._step = 0
+
+    def observe(self, x_t, x_next):
+        if x_next is None:
+            return
+        x_t = np.asarray(x_t, dtype=float).ravel()
+        x_next = np.asarray(x_next, dtype=float).ravel()
+        if x_t.shape != x_next.shape:
+            return
+        d = len(x_t)
+        if self.W is None or self.W.shape != (d, d + 1):
+            self.W = np.zeros((d, d + 1))
+        x_aug = np.append(x_t, 1.0)
+        pred = self.W @ x_aug
+        err = x_next - pred
+        self._step += 1
+        lr = self.lr / (1.0 + 0.001 * self._step)
+        # clipped gradient step
+        grad = np.outer(err, x_aug) - self.reg * self.W
+        self.W += np.clip(lr * grad, -0.5, 0.5)
+
+    def predict(self, x_t):
+        if self.W is None:
+            return None
+        x_t = np.asarray(x_t, dtype=float).ravel()
+        if self.W.shape[1] != len(x_t) + 1:
+            return None
+        return self.W @ np.append(x_t, 1.0)
