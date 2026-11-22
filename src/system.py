@@ -644,7 +644,7 @@ class NoiseSeparatedSystem:
                 self.graph.set_weight(name, "output", w)
         # Original intent: the graph blends the minds.
         # Prefer a permanence layer when it has a confident match.
-        # Reactive is the short path, but only when confidence is very high
+        # 1. Reaction: short path, only at very high confidence
         if "reactive" in raw:
             conf = self.reactive.confidence(x) if hasattr(self.reactive, "confidence") else 0.0
             if conf >= 0.9:
@@ -652,17 +652,25 @@ class NoiseSeparatedSystem:
                 via = "reactive"
                 self._record(x, {"kind": "predict", "pred": pred, "via": via})
                 return pred, via
-        if "knowledge" in raw:
-            pred = raw["knowledge"]
-            via = "knowledge"
-            self._record(x, {"kind": "predict", "pred": pred, "via": via})
-            return pred, via
+        # 2. No reaction -> think. Thought consults wisdom, then knowledge, else chaos.
         if "wisdom" in raw:
             pred = raw["wisdom"]
-            via = "wisdom"
+            via = "thought:wisdom"
             self._record(x, {"kind": "predict", "pred": pred, "via": via})
             return pred, via
-        pred = self.graph.compute_output(votes) if votes else raw.get("thought")
+        if "knowledge" in raw:
+            pred = raw["knowledge"]
+            via = "thought:knowledge"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        # 3. Nothing known -> chaotic attempt
+        if "chaos" in raw:
+            pred = raw["chaos"]
+            via = "chaos"
+            self._record(x, {"kind": "predict", "pred": pred, "via": via})
+            return pred, via
+        # 4. Last resort: the analytical estimate
+        pred = raw.get("thought") or (self.graph.compute_output(votes) if votes else None)
         via = "graph:" + "+".join(sorted(votes.keys()))
         self._record(x, {"kind": "predict", "pred": pred, "via": via})
         return pred, via
