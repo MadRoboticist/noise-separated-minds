@@ -420,6 +420,7 @@ class NoiseSeparatedSystem:
             self.knowledge.fade()
             self.reactive.fade()
             self.trauma.fade()
+            self.graph.decay_toward_prior(rate=0.005)
             if self._active_chaos_probe():
                 self._reentries += 1
                 self._chaos_promotions += 1

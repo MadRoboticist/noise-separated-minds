@@ -98,3 +98,23 @@ class MindGraph:
     def informed_by(self, node: str) -> Dict[str, float]:
         """Return {src: weight} for every edge into node."""
         return {src: w for (src, dst), w in self.edges.items() if dst == node}
+
+
+    def decay_toward_prior(self, rate: float = 0.01):
+        """Pull every edge a small step toward the normalized default.
+        Prevents permanent collapse onto a single source.
+        """
+        # Recompute the prior from DEFAULT_EDGES
+        from collections import defaultdict
+        prior_raw = defaultdict(list)
+        for (src, dst), w in DEFAULT_EDGES.items():
+            prior_raw[dst].append((src, w))
+        prior = {}
+        for dst, pairs in prior_raw.items():
+            total = sum(max(0.0, w) for _, w in pairs) or 1.0
+            for src, w in pairs:
+                prior[(src, dst)] = max(0.0, w) / total
+        for key, target in prior.items():
+            if key in self.edges:
+                self.edges[key] = (1 - rate) * self.edges[key] + rate * target
+        self.normalize()
