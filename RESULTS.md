@@ -70,7 +70,7 @@ A continuous signal with a noisy target (1.0 + 0.05 noise), 40% structureless bu
 
 The system stays at the noise floor. Without shocks it was about 0.041; with shocks it is 0.042-0.043. Linear rises to 0.18-0.35. kNN collapses to 2.0-4.3 because it stores the shock samples and returns them as neighbors. MLP rises to 0.16-0.17.
 
-The shocks are rejected before they enter any store, so the noisy signal is tracked and the bad values are not absorbed.
+The auditor rejects shocks before they enter any store. An observation more than 4 standard deviations from the stored mean is refused, so the mean never moves and the bad value is not absorbed.
 
 ## Decision mix
 
