@@ -396,6 +396,19 @@ class TinyMLPPerspective(Perspective):
     def sample(self, x):
         return self.predict(x)
 
+    def prune(self, percentile: float = 50.0):
+        """Zero out weights below the given percentile of magnitude."""
+        if self.W1 is None:
+            return 0
+        all_w = np.concatenate([self.W1.ravel(), self.W2.ravel()])
+        thresh = np.percentile(np.abs(all_w), percentile)
+        mask1 = np.abs(self.W1) < thresh
+        mask2 = np.abs(self.W2) < thresh
+        n = int(mask1.sum() + mask2.sum())
+        self.W1[mask1] = 0.0
+        self.W2[mask2] = 0.0
+        return n
+
 
 class AnalyticalMind:
     def __init__(self, max_obs: int = 2_000, collapse_threshold: float = 4.0):
