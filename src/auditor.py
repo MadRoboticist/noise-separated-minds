@@ -172,6 +172,11 @@ class Auditor:
                 reversed_count += 1
         return reversed_count
 
+
+    def should_block_promotion(self, clerk, key: str) -> bool:
+        """Block re-promotion of entries unlearned more than once."""
+        return clerk._unlearn_counts.get(key, 0) >= 2
+
     def apply(self, clerk, finding: AuditFinding):
         if finding is None:
             return

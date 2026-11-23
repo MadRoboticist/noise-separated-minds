@@ -392,7 +392,8 @@ class NoiseSeparatedSystem:
         # Always land structured repeats in Knowledge first
         if existing is not None and existing["hits"] >= hits_needed and score >= self.promote_score:
             stored_y = y if y is not None else existing.get("output")
-            self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
+            if not self.auditor.should_block_promotion(self, self._trace_key(x)):
+                self.knowledge.add_or_reinforce(x, stored_y, boost=self.knowledge_boost, step=self._step)
             self._record(x, {"kind": "to_knowledge", "y": stored_y, **context})
 
         # --- Formation difficulty: knowledge (easy) < wisdom (harder) < reactive (hardest) ---
