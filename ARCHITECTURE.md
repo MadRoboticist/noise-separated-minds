@@ -70,3 +70,11 @@ The following were added during development and did not improve prediction. They
 ## What the system is for
 
 The system wins on tasks with discrete, repeated patterns and a target that is not a linear function of the input. It is competitive with k-NN on those tasks and slightly ahead of linear, k-NN, and a small MLP on continuous signals with noise bursts. It is not competitive with a plain linear model on low-dimensional continuous regression where the relationship is already linear.
+
+## Auditor
+
+The auditor is the shock check at the update site in every store. Before a mean is updated, the new observation is compared to the stored mean and variance. If it is more than 4 standard deviations out and the store has more than 10 observations, the update is rejected. The bad value never enters the mean.
+
+This is what keeps the system exact on streams with shocks. Linear regression, k-NN, and MLP absorb the bad value into their weights. The auditor refuses it, so the stored patterns stay at the true targets and later predictions are unaffected.
+
+On a noisy continuous target with shocks, the system holds at the noise floor (~0.042) while linear rises to 0.18-0.35, k-NN collapses to 2.0-4.3, and MLP rises to 0.16-0.17.
