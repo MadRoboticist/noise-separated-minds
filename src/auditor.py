@@ -158,6 +158,20 @@ class Auditor:
                 cleared += 1
         return cleared
 
+
+    def audit_trauma(self, clerk):
+        """Reverse trauma entries that were normal variation, not shocks."""
+        reversed_count = 0
+        if not hasattr(clerk, "trauma"):
+            return 0
+        for entry in list(getattr(clerk.trauma, "entries", [])):
+            err = getattr(entry, "error", None)
+            if err is not None and err < 2.0:
+                # Not a real shock. Remove it.
+                clerk.trauma.entries.remove(entry)
+                reversed_count += 1
+        return reversed_count
+
     def apply(self, clerk, finding: AuditFinding):
         if finding is None:
             return
