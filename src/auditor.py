@@ -146,6 +146,18 @@ class Auditor:
 
         return None
 
+
+    def audit_hypotheses(self, clerk):
+        """Clear hypotheses that are mostly rejected so slots free up."""
+        cleared = 0
+        for h in clerk.hypotheses.hypotheses:
+            if not h.active:
+                continue
+            if h.rejections >= 2 and h.rejections > h.confirmations:
+                h.active = False
+                cleared += 1
+        return cleared
+
     def apply(self, clerk, finding: AuditFinding):
         if finding is None:
             return

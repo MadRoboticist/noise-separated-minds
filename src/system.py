@@ -269,6 +269,7 @@ class NoiseSeparatedSystem:
         # Audit before any early return
         if self._step % self.audit_every == 0 and self._recent_good and y is not None:
             suspect = self._recent_good[-1]
+            self.auditor.audit_hypotheses(self)
             finding = self.auditor.audit_input(self, suspect, observed_y=y)
             if finding:
                 self.auditor.apply(self, finding)
