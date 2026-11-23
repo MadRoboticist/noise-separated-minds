@@ -26,6 +26,9 @@ class ReactiveMind:
                     # Accumulate a running mean of y, do not store the sample
                     old_y = prev[0] if isinstance(prev, tuple) else prev
                     hits = prev[2] + 1 if isinstance(prev, tuple) and len(prev) > 2 else 2
+                    # Shock: reject if far from the stored mean
+                    if hits > 10 and abs(float(y) - old_y) > 4.0:
+                        return
                     new_y = old_y + (float(y) - old_y) / hits
                     stren = min((prev[1] if isinstance(prev, tuple) else 1.0) + 0.1, 5.0)
                     self.table[k] = (new_y, stren, hits)

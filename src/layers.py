@@ -45,6 +45,9 @@ class KnowledgeItem:
         if y is not None:
             y = float(y)
             delta = y - self.y
+            std = max(getattr(self, "y_var", 1.0) ** 0.5, 0.1)
+            if self.n > 10 and abs(delta) > 4.0 * std:
+                return  # shock: do not move the mean
             self.y += delta / self.n
             self.y_var += (delta * (y - self.y) - self.y_var) / self.n
         self.hits += 1
@@ -127,6 +130,9 @@ class WisdomEntry:
         if y is not None:
             y = float(y)
             delta = y - self.y
+            std = max(getattr(self, "y_var", 1.0) ** 0.5, 0.1)
+            if self.n > 10 and abs(delta) > 4.0 * std:
+                return  # shock: do not move the mean
             self.y += delta / self.n
             self.y_var += (delta * (y - self.y) - self.y_var) / self.n
 
