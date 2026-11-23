@@ -153,13 +153,17 @@ class Auditor:
         # (the finding already encodes the contradiction)
         # If the contradicted prediction came from reactive, raise the bar
         # so the short path is taken less often. That is where error lives.
-        # Contradiction -> the linear fallback absorbed a bad value.
-        # Slow its learning. Recovers when findings stop.
-        if hasattr(clerk, "linear_lr"):
-            clerk.linear_lr = max(0.001, clerk.linear_lr * 0.9)
-            for p in clerk.thought.mind.perspectives:
-                if hasattr(p, "lr"):
-                    p.lr = clerk.linear_lr
+        # Undo the weight change that led to the contradiction.
+        # Restore the previous mean on the nearest knowledge component.
+        if hasattr(finding, "distance") and finding.distance is not None:
+            best, best_d = None, 1e9
+            for item in clerk.knowledge.items:
+                if hasattr(item, "_prev_y") and hasattr(item, "x"):
+                    d = finding.distance
+                    if d < best_d:
+                        best, best_d = item, d
+            if best is not None and best_d < 1.0:
+                best.y = best._prev_y
         clerk.unlearn(finding.input_key)
         # Immediately reinforce the current good observation so the correction sticks
         if hasattr(finding, "correct_y") and finding.correct_y is not None:
