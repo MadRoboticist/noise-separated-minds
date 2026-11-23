@@ -121,8 +121,53 @@ def bench(dim, n=800):
     return np.mean(eo), np.mean(el), np.mean(ek), np.mean(em), len(s.trauma)
 
 
+
+
+def noisy_with_shocks(dim, n=600, seed=1):
+    """Continuous signal, noisy target, 40% bursts, periodic shocks."""
+    rng = np.random.RandomState(seed)
+    signal = np.sin(np.linspace(0, 4 * np.pi, dim))
+    rows = []
+    for t in range(n):
+        if t > 0 and t % 100 == 0:
+            rows.append((signal + 0.02 * rng.randn(dim), 1.0 + 10.0, True))
+        elif rng.rand() < 0.4:
+            rows.append((rng.randn(dim), None, False))
+        else:
+            rows.append((signal + 0.05 * rng.randn(dim), 1.0 + 0.05 * rng.randn(), False))
+    return rows
+
+
+def bench_noisy_shocks(dim):
+    rows = noisy_with_shocks(dim)
+    s = NoiseSeparatedSystem(config=SystemConfig.small())
+    lin, knn, mlp = OnlineLinear(dim), OnlineKNN(), OnlineMLP(dim)
+    eo, el, ek, em = [], [], [], []
+    for i, (x, y, is_shock) in enumerate(rows):
+        if i > 40 and y is not None and not is_shock:
+            p, _ = s.predict(x)
+            if p is not None:
+                eo.append(abs(float(p) - y))
+            el.append(abs(lin.predict(x) - y))
+            kp = knn.predict(x)
+            if kp is not None:
+                ek.append(abs(kp - y))
+            em.append(abs(mlp.predict(x) - y))
+        s.observe(x, y)
+        if y is not None:
+            lin.observe(x, y)
+            knn.observe(x, y)
+            mlp.observe(x, y)
+    return np.mean(eo), np.mean(el), np.mean(ek), np.mean(em)
+
 if __name__ == "__main__":
+    print("Shocks (fixed targets):")
     print(f"{'dim':>4}  {'ours':>7}  {'linear':>7}  {'knn':>7}  {'mlp':>7}  {'trauma':>6}")
     for dim in [32, 64, 128]:
         eo, el, ek, em, nt = bench(dim)
         print(f"{dim:4d}  {eo:7.4f}  {el:7.4f}  {ek:7.4f}  {em:7.4f}  {nt:6d}")
+    print("\nNoisy target + shocks:")
+    print(f"{'dim':>4}  {'ours':>7}  {'linear':>7}  {'knn':>7}  {'mlp':>7}")
+    for dim in [32, 64, 128]:
+        eo, el, ek, em = bench_noisy_shocks(dim)
+        print(f"{dim:4d}  {eo:7.4f}  {el:7.4f}  {ek:7.4f}  {em:7.4f}")

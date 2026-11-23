@@ -57,6 +57,21 @@ The discrete patterns with periodic shocks: a known pattern paired with a wildly
 
 The system is well ahead. kNN is the worst — it stores the shock samples and returns them as neighbors. Linear and MLP absorb the bad outputs into their weights. The system's trauma path isolates the shock: it negates reactive (pushes the reflex away from the bad value) and does not let the bad output become the stored pattern.
 
+
+### Noisy target with shocks
+
+A continuous signal with a noisy target (1.0 + 0.05 noise), 40% structureless bursts, and periodic shocks (output +10). The target jitters, so zero error is impossible. The noise floor is about 0.04.
+
+| dim | ours  | linear | knn   | mlp   |
+|-----|-------|--------|-------|-------|
+| 32  | 0.042 | 0.181  | 2.045 | 0.158 |
+| 64  | 0.043 | 0.210  | 3.916 | 0.169 |
+| 128 | 0.043 | 0.353  | 4.282 | 0.174 |
+
+The system stays at the noise floor. Without shocks it was about 0.041; with shocks it is 0.042-0.043. Linear rises to 0.18-0.35. kNN collapses to 2.0-4.3 because it stores the shock samples and returns them as neighbors. MLP rises to 0.16-0.17.
+
+The shocks are rejected before they enter any store, so the noisy signal is tracked and the bad values are not absorbed.
+
 ## Decision mix
 
 On a 2000-step discrete stream at dim=64:
